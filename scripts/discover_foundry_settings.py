@@ -105,9 +105,9 @@ def discover_settings():
     if not endpoint:
         print("❌ AZURE_OPENAI_ENDPOINT or AZURE_EXISTING_AIPROJECT_ENDPOINT not found in .env file")
         print("\nPlease add to your .env file:")
-        print("AZURE_EXISTING_AIPROJECT_ENDPOINT=https://support-8844-resource.services.ai.azure.com/api/projects/support-8844")
+        print("AZURE_EXISTING_AIPROJECT_ENDPOINT=https://your-resource.services.ai.azure.com/api/projects/your-project")
         print("\nOr:")
-        print("AZURE_OPENAI_ENDPOINT=https://support-8844-resource.services.ai.azure.com/api/projects/support-8844")
+        print("AZURE_OPENAI_ENDPOINT=https://your-resource.services.ai.azure.com/api/projects/your-project")
         return
 
     # Clean up endpoint (remove quotes if present)

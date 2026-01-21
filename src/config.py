@@ -73,7 +73,7 @@ def _normalize_endpoint(endpoint: str) -> str:
 
     # If it's a project endpoint, extract base endpoint
     if '/api/projects/' in endpoint:
-        # Extract base: https://support-8844-resource.services.ai.azure.com
+        # Extract base endpoint from project endpoint
         base = endpoint.split('/api/projects/')[0]
         return base + '/'
 
@@ -184,7 +184,7 @@ def get_azure_openai_client() -> AzureOpenAI:
     if not endpoint:
         raise ValueError(
             "AZURE_OPENAI_ENDPOINT or AZURE_EXISTING_AIPROJECT_ENDPOINT must be set. "
-            "Example: https://support-8844-resource.services.ai.azure.com/api/projects/support-8844"
+            "Example: https://your-resource.services.ai.azure.com/api/projects/your-project"
         )
 
     # Clean up endpoint (remove quotes if present from env file)

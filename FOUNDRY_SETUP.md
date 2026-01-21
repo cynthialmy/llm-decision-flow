@@ -27,17 +27,17 @@ Use a Foundry agent for all LLM operations. This is the recommended approach.
 **Environment Variables**:
 ```env
 # Foundry Project Endpoint (required)
-AZURE_EXISTING_AIPROJECT_ENDPOINT=https://support-8844-resource.services.ai.azure.com/api/projects/support-8844
+AZURE_EXISTING_AIPROJECT_ENDPOINT=https://your-resource.services.ai.azure.com/api/projects/your-project
 
 # Foundry Agent ID (required for agent approach)
-AZURE_EXISTING_AGENT_ID=llm-decision-agent:1
+AZURE_EXISTING_AGENT_ID=your-agent-name:1
 
 # Optional Foundry variables
-AZURE_ENV_NAME=agents-playground-5576
-AZURE_LOCATION=swedencentral
-AZURE_SUBSCRIPTION_ID=5ca5c48b-6f96-4981-947c-e0b2360a44c9
-AZURE_EXISTING_AIPROJECT_RESOURCE_ID=/subscriptions/.../projects/support-8844
-AZURE_EXISTING_RESOURCE_ID=/subscriptions/.../accounts/support-8844-resource
+AZURE_ENV_NAME=your-env-name
+AZURE_LOCATION=your-location
+AZURE_SUBSCRIPTION_ID=your-subscription-id
+AZURE_EXISTING_AIPROJECT_RESOURCE_ID=/subscriptions/.../projects/your-project
+AZURE_EXISTING_RESOURCE_ID=/subscriptions/.../accounts/your-resource
 ```
 
 **How It Works**:
@@ -58,7 +58,7 @@ If you prefer to use direct model deployments instead of agents:
 **Environment Variables**:
 ```env
 # Base endpoint (without /api/projects/)
-AZURE_OPENAI_ENDPOINT=https://support-8844-resource.services.ai.azure.com/
+AZURE_OPENAI_ENDPOINT=https://your-resource.services.ai.azure.com/
 
 # API Key
 AZURE_OPENAI_API_KEY=your-api-key-here
@@ -118,7 +118,7 @@ python scripts/test_api_key_setup.py
 
 ### "Agent not found" or "404 Resource not found"
 - Verify agent name in Foundry web interface
-- Check `AZURE_EXISTING_AGENT_ID` matches exactly (e.g., `llm-decision-agent:1`)
+- Check `AZURE_EXISTING_AGENT_ID` matches exactly (e.g., `your-agent-name:1`)
 - Agent name format: `agent-name` or `agent-name:version`
 
 ### "Client.__init__() got an unexpected keyword argument 'proxies'"
