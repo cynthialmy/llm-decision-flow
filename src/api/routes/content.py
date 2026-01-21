@@ -1,8 +1,11 @@
 """Content analysis routes."""
+import logging
 from fastapi import APIRouter, HTTPException
 from src.models.schemas import AnalysisRequest, AnalysisResponse
 from src.orchestrator.decision_orchestrator import DecisionOrchestrator
 from src.governance.logger import GovernanceLogger
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 orchestrator = DecisionOrchestrator()
@@ -37,4 +40,5 @@ async def analyze_content(request: AnalysisRequest) -> AnalysisResponse:
 
         return analysis_response
     except Exception as e:
+        logger.error(f"Error analyzing content: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error analyzing content: {str(e)}")

@@ -72,6 +72,13 @@ AZURE_EXISTING_AIPROJECT_ENDPOINT=https://your-resource.services.ai.azure.com/ap
 # Foundry Agent ID (required)
 AZURE_EXISTING_AGENT_ID=your-agent-name:1
 
+# Embedding Deployment (required for RAG/evidence retrieval)
+# This should be the name of your embedding model deployment (e.g., text-embedding-ada-002)
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+
+# API Key (required for embeddings - Foundry agents use Azure credentials, but embeddings need API key)
+AZURE_OPENAI_API_KEY=your-api-key-here
+
 # Optional Foundry variables (not required for basic setup)
 AZURE_ENV_NAME=your-env-name
 AZURE_LOCATION=your-location
@@ -203,14 +210,18 @@ curl http://localhost:8000/api/reviews
 
 #### 6. Test Frontend
 
-Open `frontend/index.html` in your browser, or serve it:
+**Option 1: Simple HTTP Server (Recommended)**
 
 ```bash
 cd frontend
 python -m http.server 8080
 ```
 
-Then navigate to `http://localhost:8080`
+Then navigate to `http://localhost:8080` in your browser.
+
+**Option 2: Open Directly**
+
+Simply open `frontend/index.html` in your web browser. Note: Some features may not work due to CORS restrictions when opening files directly.
 
 ---
 
@@ -229,6 +240,33 @@ uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Server will start on `http://localhost:8000`
+
+### Start the Frontend
+
+**Important**: Make sure the backend server is running first (see above).
+
+**Option 1: Using Python HTTP Server (Recommended)**
+
+Open a new terminal window and run:
+
+```bash
+cd frontend
+python -m http.server 8080
+```
+
+Then open your browser and navigate to:
+- **Main Interface**: `http://localhost:8080/index.html`
+- **Review Queue**: `http://localhost:8080/review.html`
+- **Dashboard**: `http://localhost:8080/dashboard.html`
+
+**Option 2: Open HTML Files Directly**
+
+You can also open the HTML files directly in your browser:
+- `frontend/index.html` - Content analysis interface
+- `frontend/review.html` - Human review queue
+- `frontend/dashboard.html` - Metrics dashboard
+
+**Note**: When opening files directly (not via HTTP server), some features may not work due to browser CORS restrictions. Using the HTTP server is recommended.
 
 ### API Endpoints
 

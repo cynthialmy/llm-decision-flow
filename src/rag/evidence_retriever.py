@@ -1,5 +1,5 @@
 """Evidence retriever using RAG to find supporting and contradicting evidence."""
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from src.rag.vector_store import VectorStore
 from src.models.schemas import Evidence, EvidenceItem, Claim

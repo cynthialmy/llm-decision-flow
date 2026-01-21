@@ -24,10 +24,11 @@ class Settings(BaseSettings):
     # Azure OpenAI / Azure AI Foundry Configuration
     # Support both standard names and Foundry SDK names
     azure_openai_endpoint: Optional[str] = None  # Standard name
-    azure_openai_api_key: Optional[str] = None  # Optional for Foundry (uses Azure credentials)
+    azure_openai_api_key: Optional[str] = None  # Optional for Foundry (uses Azure credentials), but required for embeddings
     azure_openai_deployment_name: Optional[str] = None  # Deployment name in Foundry or Azure OpenAI
     azure_openai_api_version: str = "2024-02-15-preview"
     azure_openai_embedding_deployment: Optional[str] = None
+    azure_openai_embedding_endpoint: Optional[str] = None  # Optional: explicit embedding endpoint (for Foundry, use cognitiveservices.azure.com)
 
     # Foundry-specific: Use Azure credentials instead of API key
     use_foundry: bool = False  # Set to True to use Foundry SDK, or auto-detect from endpoint
@@ -288,8 +289,101 @@ def get_azure_openai_client() -> AzureOpenAI:
 
 
 def get_azure_openai_embedding_client() -> AzureOpenAI:
-    """Create and return Azure OpenAI client for embeddings."""
-    # Use same approach as chat client
+    """Create and return Azure OpenAI client for embeddings.
+
+    For Foundry endpoints, embeddings need to use the base endpoint (not project endpoint).
+    According to Microsoft docs, Foundry supports multiple endpoints:
+    - https://<resource-name>.openai.azure.com (preferred for embeddings)
+    - https://<resource-name>.services.ai.azure.com
+    - https://<resource-name>.cognitiveservices.azure.com
+
+    This function tries openai.azure.com first, then falls back to others.
+    """
+    # Check if we're using Foundry
+    endpoint = settings.azure_existing_aiproject_endpoint or settings.azure_openai_endpoint
+    if not endpoint:
+        raise ValueError(
+            "AZURE_OPENAI_ENDPOINT or AZURE_EXISTING_AIPROJECT_ENDPOINT must be set."
+        )
+
+    endpoint = endpoint.strip().strip('"').strip("'")
+    is_foundry_endpoint = '/api/projects/' in endpoint
+
+    # Check if explicit embedding endpoint is set (takes precedence)
+    if settings.azure_openai_embedding_endpoint:
+        embedding_endpoint = settings.azure_openai_embedding_endpoint.strip().strip('"').strip("'")
+        if not settings.azure_openai_api_key:
+            raise ValueError("AZURE_OPENAI_API_KEY is required when using AZURE_OPENAI_EMBEDDING_ENDPOINT")
+
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Using explicit embedding endpoint: {embedding_endpoint}")
+
+        return AzureOpenAI(
+            azure_endpoint=embedding_endpoint,
+            api_key=settings.azure_openai_api_key,
+            api_version=settings.azure_openai_api_version,
+        )
+
+    # For Foundry, embeddings need the base endpoint (not Foundry project endpoint)
+    if is_foundry_endpoint and FOUNDRY_AVAILABLE:
+        # Extract resource name from Foundry endpoint
+        # e.g., https://resource.services.ai.azure.com/api/projects/project-name
+        # -> resource
+        resource_name = None
+        if '.services.ai.azure.com' in endpoint:
+            resource_name = endpoint.split('://')[1].split('.services.ai.azure.com')[0]
+        elif '.openai.azure.com' in endpoint:
+            resource_name = endpoint.split('://')[1].split('.openai.azure.com')[0]
+        elif '.cognitiveservices.azure.com' in endpoint:
+            resource_name = endpoint.split('://')[1].split('.cognitiveservices.azure.com')[0]
+        else:
+            # Fallback: try to extract from any endpoint format
+            parts = endpoint.split('://')[1].split('/')[0].split('.')
+            if len(parts) > 0:
+                resource_name = parts[0]
+
+        if not resource_name:
+            raise ValueError(
+                f"Could not extract resource name from endpoint: {endpoint}. "
+                "Please set AZURE_OPENAI_EMBEDDING_ENDPOINT explicitly."
+            )
+
+        # Use openai.azure.com endpoint first (standard, most compatible per Microsoft docs)
+        # If this doesn't work, user can set AZURE_OPENAI_EMBEDDING_ENDPOINT explicitly
+        embedding_endpoint = f"https://{resource_name}.openai.azure.com"
+
+        # Embeddings require API key (even when using Foundry agents)
+        if not settings.azure_openai_api_key:
+            raise ValueError(
+                "AZURE_OPENAI_API_KEY is required for embeddings. "
+                "Even when using Foundry agents, embeddings need an API key with the base endpoint."
+            )
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # For embeddings, try a more stable API version if preview version is being used
+        embedding_api_version = settings.azure_openai_api_version
+        if 'preview' in embedding_api_version.lower():
+            embedding_api_version = "2024-08-01-preview"
+
+        logger.info(f"Using embedding endpoint: {embedding_endpoint}")
+        logger.info(f"Using embedding deployment: {get_embedding_deployment_name()}")
+        logger.info(f"Using API version: {embedding_api_version}")
+        logger.info(
+            f"If you get a 404 error, try setting AZURE_OPENAI_EMBEDDING_ENDPOINT to:\n"
+            f"  - https://{resource_name}.cognitiveservices.azure.com\n"
+            f"  - https://{resource_name}.services.ai.azure.com"
+        )
+
+        return AzureOpenAI(
+            azure_endpoint=embedding_endpoint,
+            api_key=settings.azure_openai_api_key,
+            api_version=embedding_api_version,
+        )
+
+    # For standard Azure OpenAI, use the same approach as chat client
     return get_azure_openai_client()
 
 
