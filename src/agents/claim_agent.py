@@ -1,5 +1,6 @@
 """Claim Agent: Extracts factual claims and tags domains."""
 from typing import List
+from pydantic import BaseModel
 from src.agents.base import BaseAgent
 from src.models.schemas import Claim, Domain
 

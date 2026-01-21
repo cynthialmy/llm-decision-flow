@@ -257,7 +257,8 @@ The goal is **not** to build a production system, but to demonstrate *Senior PMâ
 * English language
 * Health + civic domains
 * One policy version
-* Azure AI Foundry integration (agents or direct models)
+* Azure AI Foundry integration (agents recommended, direct models supported)
+* Foundry agent support via `responses.create()` API
 
 **Explicitly Excluded**
 
@@ -268,14 +269,15 @@ The goal is **not** to build a production system, but to demonstrate *Senior PMâ
 
 ## 9. Setup & Configuration
 
-See [SETUP.md](SETUP.md) for installation instructions and [FOUNDRY_SETUP.md](FOUNDRY_SETUP.md) for Azure AI Foundry configuration.
+See [SETUP.md](SETUP.md) for complete installation, configuration, and testing instructions.
 
 **Quick Start**:
 1. Install dependencies: `pip install -r requirements.txt`
-2. Configure `.env` file (see FOUNDRY_SETUP.md)
-3. Populate evidence: `python scripts/populate_evidence.py`
-4. Run server: `python run_server.py`
-5. Open `frontend/index.html` in browser
+2. Configure `.env` file (see SETUP.md)
+3. Test setup: `python scripts/test_foundry_agent.py`
+4. Populate evidence: `python scripts/populate_evidence.py`
+5. Run server: `python run_server.py`
+6. Open `frontend/index.html` in browser
 
 ---
 

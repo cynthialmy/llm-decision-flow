@@ -17,16 +17,48 @@ class BaseAgent(ABC):
 
     def __init__(self):
         """Initialize agent with Azure OpenAI client."""
-        self.client: AzureOpenAI = get_azure_openai_client()
-        self.deployment_name: str = settings.azure_openai_deployment_name
+        # Check if we should use Foundry agent first
+        try:
+            self.foundry_project_client = get_foundry_project_client()
+        except Exception as e:
+            logger.debug(f"Could not get Foundry project client: {e}")
+            self.foundry_project_client = None
 
-        # Check if we should use Foundry agent
-        self.foundry_project_client = get_foundry_project_client()
         self.foundry_agent_name = get_foundry_agent_name()
         self.use_foundry_agent = self.foundry_project_client is not None and self.foundry_agent_name is not None
 
         if self.use_foundry_agent:
             logger.info(f"Using Foundry agent: {self.foundry_agent_name}")
+            # For Foundry agents, get the OpenAI client from the project client
+            # Try inference API first (newer SDK), then fallback to get_openai_client()
+            try:
+                # Method 1: Try inference.get_azure_openai_client() (newer SDK versions)
+                if hasattr(self.foundry_project_client, 'inference') and hasattr(self.foundry_project_client.inference, 'get_azure_openai_client'):
+                    api_version = settings.azure_openai_api_version or "2024-02-15-preview"
+                    self.client = self.foundry_project_client.inference.get_azure_openai_client(api_version=api_version)
+                    logger.debug("Using inference.get_azure_openai_client()")
+                # Method 2: Fallback to get_openai_client() (older SDK)
+                elif hasattr(self.foundry_project_client, 'get_openai_client'):
+                    self.client = self.foundry_project_client.get_openai_client()
+                    logger.debug("Using get_openai_client()")
+                else:
+                    raise ValueError("Foundry SDK doesn't provide a method to get OpenAI client")
+
+                # Verify it has responses attribute (Foundry extension)
+                if not hasattr(self.client, 'responses'):
+                    logger.error(
+                        "Foundry OpenAI client doesn't have 'responses' attribute. "
+                        "This is required for Foundry agent calls. Check SDK version. "
+                        f"Client type: {type(self.client)}"
+                    )
+                    raise ValueError("Foundry client missing 'responses' attribute")
+            except Exception as e:
+                logger.error(f"Failed to get OpenAI client from Foundry project client: {e}")
+                raise
+            self.deployment_name = None  # Not needed for Foundry agents
+        else:
+            self.client: AzureOpenAI = get_azure_openai_client()
+            self.deployment_name: str = settings.azure_openai_deployment_name
 
     def _call_llm(
         self,
@@ -91,21 +123,41 @@ class BaseAgent(ABC):
             # Get the agent
             agent = self.foundry_project_client.agents.get(agent_name=self.foundry_agent_name)
 
-            # Prepare input messages
-            input_messages = []
+            # Prepare input messages in Foundry format
+            # Foundry responses API requires each input item to have a "type" field
+            input_items = []
             if system_prompt:
-                input_messages.append({"role": "system", "content": system_prompt})
-            input_messages.append({"role": "user", "content": prompt})
+                input_items.append({
+                    "type": "message",
+                    "role": "system",
+                    "content": system_prompt
+                })
+            input_items.append({
+                "type": "message",
+                "role": "user",
+                "content": prompt
+            })
 
-            # Call agent via OpenAI client
+            # Use Foundry's responses.create() API (as per Azure documentation)
+            # The client should have been obtained from project_client.get_openai_client()
+            # which includes the Foundry extensions
+            if not hasattr(self.client, 'responses'):
+                raise ValueError(
+                    "Foundry OpenAI client doesn't have 'responses' attribute. "
+                    "Make sure client is obtained from project_client.get_openai_client()"
+                )
+
             response = self.client.responses.create(
-                input=input_messages,
+                input=input_items,
                 extra_body={"agent": {"name": agent.name, "type": "agent_reference"}},
             )
 
             return response.output_text or ""
+
         except Exception as e:
             logger.error(f"Error calling Foundry agent: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise
 
     def _parse_structured_output(

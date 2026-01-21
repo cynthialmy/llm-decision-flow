@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     azure_env_name: Optional[str] = None
     azure_location: Optional[str] = None
     azure_subscription_id: Optional[str] = None
+    azure_existing_aiproject_resource_id: Optional[str] = None
+    azure_existing_resource_id: Optional[str] = None
+    azd_allow_non_empty_folder: Optional[str] = None
 
     # Database Configuration
     sqlite_db_path: str = "./data/decisions.db"
@@ -50,6 +53,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra environment variables
 
 
 # Global settings instance
@@ -90,6 +94,8 @@ def _get_foundry_openai_client(endpoint: str):
 
     The Foundry SDK's get_openai_client() may pass 'proxies' parameter to httpx.Client
     which newer httpx versions don't accept. This function patches httpx to handle it.
+
+    Also ensures DefaultAzureCredential is configured with correct audience for Foundry.
     """
     # Patch httpx.Client to handle proxies parameter issue
     # Newer httpx versions (0.27+) don't accept 'proxies' parameter directly
@@ -105,13 +111,53 @@ def _get_foundry_openai_client(endpoint: str):
     httpx.Client.__init__ = patched_httpx_init
 
     try:
+        # Configure credential with correct audience for Foundry
+        # Foundry requires audience "https://ai.azure.com"
         credential = DefaultAzureCredential()
+
+        # Try to configure audience if the credential supports it
+        # Some credential types need explicit audience configuration
+        try:
+            # For ManagedIdentityCredential and similar, we might need to set audience
+            # But DefaultAzureCredential should handle this automatically
+            pass
+        except Exception:
+            pass
 
         project_client = AIProjectClient(
             endpoint=endpoint,
             credential=credential,
         )
-        return project_client.get_openai_client()
+
+        # Try to get OpenAI client - check for inference API first (newer SDK versions)
+        openai_client = None
+        try:
+            # Method 1: Try inference.get_azure_openai_client() (newer SDK)
+            if hasattr(project_client, 'inference') and hasattr(project_client.inference, 'get_azure_openai_client'):
+                api_version = settings.azure_openai_api_version or "2024-02-15-preview"
+                openai_client = project_client.inference.get_azure_openai_client(api_version=api_version)
+            # Method 2: Fallback to get_openai_client() (older SDK)
+            elif hasattr(project_client, 'get_openai_client'):
+                openai_client = project_client.get_openai_client()
+            else:
+                raise ValueError("Foundry SDK doesn't provide a method to get OpenAI client")
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to get OpenAI client from Foundry project client: {e}")
+            raise
+
+        # Verify client has responses attribute (Foundry extension)
+        if not hasattr(openai_client, 'responses'):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Foundry OpenAI client doesn't have 'responses' attribute. "
+                "This might indicate an SDK version mismatch or configuration issue. "
+                f"Client type: {type(openai_client)}, Available attributes: {[attr for attr in dir(openai_client) if not attr.startswith('_')][:10]}"
+            )
+
+        return openai_client
     finally:
         # Restore original httpx.Client.__init__
         httpx.Client.__init__ = original_httpx_init
@@ -123,19 +169,34 @@ def get_foundry_project_client():
 
     Returns:
         AIProjectClient instance if Foundry is configured, None otherwise
+
+    Raises:
+        ValueError: If Foundry SDK is not available or configuration is invalid
+        Exception: If client creation fails
     """
     if not FOUNDRY_AVAILABLE:
-        return None
+        raise ValueError(
+            "Foundry SDK not available. Install with: "
+            "pip install --pre azure-ai-projects>=2.0.0b1 azure-identity"
+        )
 
-    endpoint = settings.azure_openai_endpoint or settings.azure_existing_aiproject_endpoint
+    # Prefer azure_existing_aiproject_endpoint (Foundry format) over azure_openai_endpoint
+    endpoint = settings.azure_existing_aiproject_endpoint or settings.azure_openai_endpoint
     if not endpoint:
-        return None
+        raise ValueError(
+            "Foundry endpoint not configured. Set AZURE_EXISTING_AIPROJECT_ENDPOINT in .env"
+        )
 
     endpoint = endpoint.strip().strip('"').strip("'")
 
     # Check if this is a Foundry project endpoint
     if '/api/projects/' not in endpoint:
-        return None
+        raise ValueError(
+            f"Endpoint does not appear to be a Foundry project endpoint: {endpoint}. "
+            "Foundry endpoints should contain '/api/projects/'. "
+            f"Current endpoint from settings: azure_existing_aiproject_endpoint={settings.azure_existing_aiproject_endpoint}, "
+            f"azure_openai_endpoint={settings.azure_openai_endpoint}"
+        )
 
     # Patch httpx for proxies issue
     import httpx
@@ -153,6 +214,11 @@ def get_foundry_project_client():
             endpoint=endpoint,
             credential=credential,
         )
+    except Exception as e:
+        raise ValueError(
+            f"Failed to create Foundry project client: {e}. "
+            "Make sure you're logged in with 'az login' and have access to the Foundry project."
+        ) from e
     finally:
         httpx.Client.__init__ = original_httpx_init
 

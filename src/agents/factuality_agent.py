@@ -1,5 +1,6 @@
 """Factuality Agent: Assesses factual status of claims against evidence."""
 from typing import List
+from pydantic import BaseModel
 from src.agents.base import BaseAgent
 from src.models.schemas import FactualityAssessment, FactualityStatus, Claim, Evidence
 
