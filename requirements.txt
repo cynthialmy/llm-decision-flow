@@ -1,0 +1,14 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+sqlalchemy==2.0.23
+chromadb==0.4.18
+openai>=1.0.0,<2.0.0  # Foundry SDK compatibility - version 1.x works better
+httpx<0.27.0  # Foundry SDK compatibility - versions 0.27+ don't accept 'proxies' parameter
+python-dotenv==1.0.0
+python-multipart==0.0.6
+pytest==7.4.3
+# Azure AI Foundry SDK (optional, for Foundry endpoints)
+azure-ai-projects>=2.0.0b1
+azure-identity>=1.15.0

@@ -1,0 +1,19 @@
+Sample Test Transcripts for Demo
+
+=== Health Misinformation (High Risk) ===
+"Don't get the COVID vaccine! It contains microchips and will alter your DNA. I know someone who got paralyzed after taking it. The government is trying to control us through vaccines. Natural immunity is better anyway."
+
+=== Health Misinformation (Medium Risk) ===
+"I heard that eating garlic every day can cure cancer. My friend tried it and her tumor shrank. Doctors don't want you to know about this natural cure because they make money from chemotherapy."
+
+=== Civic Misinformation (High Risk) ===
+"The 2020 election was completely fraudulent. Millions of fake ballots were counted. The voting machines were hacked. The real winner was not declared. We need to investigate this massive voter fraud immediately."
+
+=== Civic Information (Low Risk) ===
+"I think mail-in voting is convenient but I prefer voting in person. It feels more secure to me personally, though I know many people trust mail-in voting."
+
+=== Health Personal Experience (Low Risk) ===
+"I got the COVID vaccine and had a sore arm for a day. That's just my personal experience - I'm not a doctor, but I'm glad I got vaccinated."
+
+=== Satire Example (Should be Allowed) ===
+"[SATIRE] Breaking: Scientists discover that drinking water causes 100% of deaths. All people who have died drank water at some point. Coincidence? I think not!"
