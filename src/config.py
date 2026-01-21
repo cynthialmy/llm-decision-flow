@@ -317,12 +317,28 @@ def get_azure_openai_embedding_client() -> AzureOpenAI:
 
         import logging
         logger = logging.getLogger(__name__)
+
+        # Normalize endpoint - Azure OpenAI SDK expects base URL without trailing slash
+        embedding_endpoint = embedding_endpoint.rstrip('/')
+
+        # For embeddings with cognitiveservices.azure.com endpoints, use a stable API version
+        # The 2024-02-15-preview version should work, but 2023-05-15 is more stable for embeddings
+        embedding_api_version = settings.azure_openai_api_version
+        if '.cognitiveservices.azure.com' in embedding_endpoint:
+            # Use a stable, widely-supported API version for cognitiveservices endpoints
+            embedding_api_version = "2023-05-15"
+            logger.info("Using stable API version 2023-05-15 for cognitiveservices.azure.com endpoint")
+        elif 'preview' in embedding_api_version.lower():
+            embedding_api_version = "2024-08-01-preview"
+
         logger.info(f"Using explicit embedding endpoint: {embedding_endpoint}")
+        logger.info(f"Using embedding deployment: {get_embedding_deployment_name()}")
+        logger.info(f"Using API version: {embedding_api_version}")
 
         return AzureOpenAI(
             azure_endpoint=embedding_endpoint,
             api_key=settings.azure_openai_api_key,
-            api_version=settings.azure_openai_api_version,
+            api_version=embedding_api_version,
         )
 
     # For Foundry, embeddings need the base endpoint (not Foundry project endpoint)

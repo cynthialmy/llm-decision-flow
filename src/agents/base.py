@@ -1,6 +1,7 @@
 """Base agent class with Azure OpenAI client and common utilities."""
 from abc import ABC, abstractmethod
-from typing import TypeVar, Type, Optional, Dict, Any
+from typing import TypeVar, Type, Optional, Dict, Any, Tuple
+import time
 import json
 import logging
 from openai import AzureOpenAI
@@ -249,6 +250,26 @@ class BaseAgent(ABC):
         )
 
         return self._parse_structured_output(response_text, output_model)
+
+    def _call_llm_structured_with_timing(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        output_model: Type[T] = None,
+        temperature: float = 0.3,
+        max_tokens: int = 2000
+    ) -> Tuple[T, float]:
+        """Call LLM with structured output and return response plus elapsed ms."""
+        start_time = time.perf_counter()
+        response = self._call_llm_structured(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            output_model=output_model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        return response, elapsed_ms
 
     @abstractmethod
     def process(self, *args, **kwargs):

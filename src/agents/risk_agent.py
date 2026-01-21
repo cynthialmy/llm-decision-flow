@@ -1,12 +1,13 @@
 """Risk Agent: Assesses risk tier based on potential harm, exposure, and vulnerable populations."""
+from typing import Tuple
 from src.agents.base import BaseAgent
-from src.models.schemas import RiskAssessment, RiskTier, Claim
+from src.models.schemas import RiskAssessment, RiskTier, Claim, AgentExecutionDetail
 
 
 class RiskAgent(BaseAgent):
     """Agent for assessing risk tier of content."""
 
-    def process(self, transcript: str, claims: list[Claim]) -> RiskAssessment:
+    def process(self, transcript: str, claims: list[Claim]) -> Tuple[RiskAssessment, AgentExecutionDetail]:
         """
         Assess risk tier based on potential harm, exposure, and vulnerable populations.
 
@@ -59,11 +60,20 @@ Return a JSON object with this structure:
   "vulnerable_populations": ["group1", "group2"]
 }}"""
 
-        response = self._call_llm_structured(
+        response, elapsed_ms = self._call_llm_structured_with_timing(
             prompt=user_prompt,
             system_prompt=system_prompt,
             output_model=RiskAssessment,
             temperature=0.3
         )
 
-        return response
+        detail = AgentExecutionDetail(
+            agent_name="Risk Agent",
+            agent_type="risk",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            execution_time_ms=elapsed_ms,
+            status="completed"
+        )
+
+        return response, detail

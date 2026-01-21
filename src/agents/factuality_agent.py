@@ -1,14 +1,14 @@
 """Factuality Agent: Assesses factual status of claims against evidence."""
-from typing import List
+from typing import List, Tuple
 from pydantic import BaseModel
 from src.agents.base import BaseAgent
-from src.models.schemas import FactualityAssessment, FactualityStatus, Claim, Evidence
+from src.models.schemas import FactualityAssessment, FactualityStatus, Claim, Evidence, AgentExecutionDetail
 
 
 class FactualityAgent(BaseAgent):
     """Agent for assessing claim factuality."""
 
-    def process(self, claims: List[Claim], evidence: Evidence) -> List[FactualityAssessment]:
+    def process(self, claims: List[Claim], evidence: Evidence) -> Tuple[List[FactualityAssessment], AgentExecutionDetail]:
         """
         Assess factual status of each claim against evidence.
 
@@ -73,11 +73,20 @@ Return a JSON object with this structure:
         class FactualityResponse(BaseModel):
             assessments: List[FactualityAssessment]
 
-        response = self._call_llm_structured(
+        response, elapsed_ms = self._call_llm_structured_with_timing(
             prompt=user_prompt,
             system_prompt=system_prompt,
             output_model=FactualityResponse,
             temperature=0.3
         )
 
-        return response.assessments
+        detail = AgentExecutionDetail(
+            agent_name="Factuality Agent",
+            agent_type="factuality",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            execution_time_ms=elapsed_ms,
+            status="completed"
+        )
+
+        return response.assessments, detail

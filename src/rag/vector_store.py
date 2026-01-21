@@ -75,6 +75,14 @@ class VectorStore:
                         resource_name = endpoint_str.split('://')[1].split('.services.ai.azure.com')[0]
 
                 # Try alternative endpoints if we have resource name and API key
+                tried_endpoints = [endpoint_str]
+                endpoint_errors = {endpoint_str: error_msg}
+
+                if not settings.azure_openai_api_key:
+                    logger.warning("No API key available for trying alternative endpoints")
+                elif not resource_name:
+                    logger.warning(f"Could not extract resource name from endpoint: {endpoint_str}")
+
                 if resource_name and settings.azure_openai_api_key:
                     alternative_endpoints = [
                         f"https://{resource_name}.openai.azure.com",
@@ -82,19 +90,34 @@ class VectorStore:
                         f"https://{resource_name}.services.ai.azure.com",
                     ]
 
-                    # Remove current endpoint from alternatives
-                    alternative_endpoints = [ep for ep in alternative_endpoints if endpoint_str not in ep]
+                    # Remove current endpoint from alternatives (normalize both for comparison)
+                    current_endpoint_normalized = endpoint_str.rstrip('/').lower()
+                    alternative_endpoints = [
+                        ep for ep in alternative_endpoints
+                        if ep.rstrip('/').lower() != current_endpoint_normalized
+                    ]
 
-                    logger.info(f"404 error with endpoint {endpoint_str}, trying alternative endpoints...")
+                    logger.info(f"404 error with endpoint {endpoint_str}, trying {len(alternative_endpoints)} alternative endpoints...")
 
                     for alt_endpoint in alternative_endpoints:
+                        tried_endpoints.append(alt_endpoint)
                         try:
                             logger.info(f"Trying alternative endpoint: {alt_endpoint}")
+
+                            # Use appropriate API version based on endpoint type
+                            api_version = settings.azure_openai_api_version
+                            if '.cognitiveservices.azure.com' in alt_endpoint:
+                                # Use stable API version for cognitiveservices endpoints
+                                api_version = "2023-05-15"
+                                logger.debug(f"Using stable API version 2023-05-15 for cognitiveservices endpoint")
+                            elif 'preview' in api_version.lower():
+                                api_version = "2024-08-01-preview"
+
                             # Create new client with alternative endpoint
                             alt_client = AzureOpenAI(
-                                azure_endpoint=alt_endpoint,
+                                azure_endpoint=alt_endpoint.rstrip('/'),
                                 api_key=settings.azure_openai_api_key,
-                                api_version=settings.azure_openai_api_version,
+                                api_version=api_version,
                             )
 
                             # Try embedding with alternative endpoint
@@ -109,35 +132,51 @@ class VectorStore:
                             return response.data[0].embedding
 
                         except Exception as alt_error:
-                            logger.debug(f"Alternative endpoint {alt_endpoint} also failed: {alt_error}")
+                            error_str = str(alt_error)
+                            endpoint_errors[alt_endpoint] = error_str
+                            logger.warning(f"Alternative endpoint {alt_endpoint} failed: {error_str[:200]}")
                             continue
 
                 # If all endpoints failed, provide helpful error message
                 helpful_msg = (
-                    f"Embedding deployment '{self.embedding_deployment}' not found at endpoint '{endpoint_str}'. "
-                    f"This usually means:\n"
-                    f"1. The deployment name is incorrect - check your AZURE_OPENAI_EMBEDDING_DEPLOYMENT setting\n"
-                    f"2. The deployment doesn't exist at this endpoint\n"
-                    f"3. Your API key doesn't have access to this deployment\n"
-                    f"4. The endpoint URL might be incorrect\n\n"
+                    f"Embedding deployment '{self.embedding_deployment}' not found. "
+                    f"Tried {len(tried_endpoints)} endpoint(s):\n"
+                )
+
+                for ep in tried_endpoints:
+                    error = endpoint_errors.get(ep, "Unknown error")
+                    # Extract just the key error info
+                    if "404" in error or "not found" in error.lower():
+                        error_summary = "404 - Resource not found"
+                    elif "401" in error or "unauthorized" in error.lower():
+                        error_summary = "401 - Unauthorized (check API key)"
+                    elif "403" in error or "forbidden" in error.lower():
+                        error_summary = "403 - Forbidden (check permissions)"
+                    else:
+                        error_summary = error[:100] + "..." if len(error) > 100 else error
+                    helpful_msg += f"  - {ep}: {error_summary}\n"
+
+                helpful_msg += (
+                    f"\nThis usually means:\n"
+                    f"1. The deployment name '{self.embedding_deployment}' is incorrect\n"
+                    f"2. The deployment doesn't exist at any of these endpoints\n"
+                    f"3. Your API key doesn't have access to embeddings\n"
+                    f"4. The endpoint URLs might be incorrect\n\n"
                 )
 
                 # If we can extract resource name, suggest alternative endpoints
                 if resource_name:
                     helpful_msg += (
-                        f"For Foundry projects, try setting AZURE_OPENAI_EMBEDDING_ENDPOINT to one of:\n"
-                        f"  - https://{resource_name}.openai.azure.com (recommended)\n"
-                        f"  - https://{resource_name}.cognitiveservices.azure.com\n"
-                        f"  - https://{resource_name}.services.ai.azure.com\n\n"
+                        f"Possible solutions:\n"
+                        f"1. Set AZURE_OPENAI_EMBEDDING_ENDPOINT to one of:\n"
+                        f"   - https://{resource_name}.openai.azure.com (recommended)\n"
+                        f"   - https://{resource_name}.cognitiveservices.azure.com\n"
+                        f"   - https://{resource_name}.services.ai.azure.com\n"
+                        f"2. Verify the deployment name '{self.embedding_deployment}' exists\n"
+                        f"3. Run 'python scripts/discover_foundry_settings.py' to find available deployments\n"
+                        f"4. Check your API key has access to embeddings\n"
                     )
 
-                helpful_msg += (
-                    f"To fix this:\n"
-                    f"- Run 'python scripts/discover_foundry_settings.py' to find available deployments\n"
-                    f"- Set AZURE_OPENAI_EMBEDDING_ENDPOINT explicitly to the correct endpoint\n"
-                    f"- Verify your API key has access to embeddings\n"
-                    f"Original error: {error_msg}"
-                )
                 logger.error(helpful_msg)
                 raise ValueError(helpful_msg)
             else:

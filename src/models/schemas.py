@@ -103,6 +103,17 @@ class Decision(BaseModel):
     escalation_reason: Optional[str] = Field(None, description="Reason for escalation if applicable")
 
 
+class AgentExecutionDetail(BaseModel):
+    """Agent execution details for UI inspection."""
+    agent_name: str = Field(..., description="Human-readable agent name")
+    agent_type: str = Field(..., description="Agent type identifier")
+    system_prompt: str = Field(..., description="System prompt used")
+    user_prompt: str = Field(..., description="User prompt used")
+    execution_time_ms: Optional[float] = Field(None, description="Execution time in ms")
+    status: str = Field("completed", description="Execution status")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
 class ReviewRequest(BaseModel):
     """Human review request."""
     id: Optional[int] = Field(None, description="Review request ID")
@@ -133,6 +144,7 @@ class AnalysisResponse(BaseModel):
     factuality_assessments: List[FactualityAssessment] = Field(default_factory=list, description="Factuality assessments")
     policy_interpretation: Optional[PolicyInterpretation] = Field(None, description="Policy interpretation")
     review_request_id: Optional[int] = Field(None, description="Review request ID if escalated")
+    agent_executions: List[AgentExecutionDetail] = Field(default_factory=list, description="Agent execution metadata")
 
 
 class HumanDecisionRequest(BaseModel):

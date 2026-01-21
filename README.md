@@ -277,7 +277,7 @@ See [SETUP.md](SETUP.md) for complete installation, configuration, and testing i
 3. Test setup: `python scripts/test_foundry_agent.py`
 4. Populate evidence: `python scripts/populate_evidence.py`
 5. Run server: `python run_server.py`
-6. Open `frontend/index.html` in browser
+6. Launch Streamlit UI: `streamlit run streamlit_app.py`
 
 ---
 

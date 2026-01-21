@@ -1,14 +1,14 @@
 """Claim Agent: Extracts factual claims and tags domains."""
-from typing import List
+from typing import List, Tuple
 from pydantic import BaseModel
 from src.agents.base import BaseAgent
-from src.models.schemas import Claim, Domain
+from src.models.schemas import Claim, Domain, AgentExecutionDetail
 
 
 class ClaimAgent(BaseAgent):
     """Agent for extracting factual claims from transcripts."""
 
-    def process(self, transcript: str) -> List[Claim]:
+    def process(self, transcript: str) -> Tuple[List[Claim], AgentExecutionDetail]:
         """
         Extract explicit and implicit factual claims from transcript.
 
@@ -54,11 +54,20 @@ Return the claims as a JSON object with this structure:
         class ClaimResponse(BaseModel):
             claims: List[Claim]
 
-        response = self._call_llm_structured(
+        response, elapsed_ms = self._call_llm_structured_with_timing(
             prompt=user_prompt,
             system_prompt=system_prompt,
             output_model=ClaimResponse,
             temperature=0.2  # Low temperature for consistent extraction
         )
 
-        return response.claims
+        detail = AgentExecutionDetail(
+            agent_name="Claim Agent",
+            agent_type="claim",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            execution_time_ms=elapsed_ms,
+            status="completed"
+        )
+
+        return response.claims, detail

@@ -9,7 +9,7 @@ from src.models.schemas import Claim, Domain, RiskAssessment, RiskTier
 class TestClaimAgent:
     """Tests for Claim Agent."""
 
-    @patch('src.agents.claim_agent.ClaimAgent._call_llm_structured')
+    @patch('src.agents.claim_agent.ClaimAgent._call_llm_structured_with_timing')
     def test_extract_claims(self, mock_llm):
         """Test claim extraction."""
         # Mock LLM response
@@ -22,20 +22,21 @@ class TestClaimAgent:
                 confidence=0.9
             )
         ]
-        mock_llm.return_value = mock_response
+        mock_llm.return_value = (mock_response, 5.0)
 
         agent = ClaimAgent()
-        claims = agent.process("COVID vaccines are safe and effective.")
+        claims, detail = agent.process("COVID vaccines are safe and effective.")
 
         assert len(claims) == 1
         assert claims[0].domain == Domain.HEALTH
+        assert detail.agent_type == "claim"
         mock_llm.assert_called_once()
 
 
 class TestRiskAgent:
     """Tests for Risk Agent."""
 
-    @patch('src.agents.risk_agent.RiskAgent._call_llm_structured')
+    @patch('src.agents.risk_agent.RiskAgent._call_llm_structured_with_timing')
     def test_assess_risk(self, mock_llm):
         """Test risk assessment."""
         # Mock LLM response
@@ -46,14 +47,15 @@ class TestRiskAgent:
             estimated_exposure="Wide exposure expected",
             vulnerable_populations=["elderly", "immunocompromised"]
         )
-        mock_llm.return_value = mock_response
+        mock_llm.return_value = (mock_response, 5.0)
 
         agent = RiskAgent()
         claims = [Claim(text="Test claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.8)]
-        risk = agent.process("Test transcript", claims)
+        risk, detail = agent.process("Test transcript", claims)
 
         assert risk.tier == RiskTier.HIGH
         assert len(risk.vulnerable_populations) > 0
+        assert detail.agent_type == "risk"
         mock_llm.assert_called_once()
 
 
@@ -65,17 +67,18 @@ class TestEvidenceAgent:
         from src.agents.evidence_agent import EvidenceAgent
 
         agent = EvidenceAgent()
-        evidence = agent.process([])
+        evidence, detail = agent.process([])
 
         assert len(evidence.supporting) == 0
         assert len(evidence.contradicting) == 0
         assert evidence.evidence_confidence == 0.0
+        assert detail.status == "skipped"
 
 
 class TestFactualityAgent:
     """Tests for Factuality Agent."""
 
-    @patch('src.agents.factuality_agent.FactualityAgent._call_llm_structured')
+    @patch('src.agents.factuality_agent.FactualityAgent._call_llm_structured_with_timing')
     def test_assess_factuality(self, mock_llm):
         """Test factuality assessment."""
         from src.agents.factuality_agent import FactualityAgent
@@ -92,16 +95,17 @@ class TestFactualityAgent:
                 evidence_summary="Multiple sources contradict"
             )
         ]
-        mock_llm.return_value = mock_response
+        mock_llm.return_value = (mock_response, 5.0)
 
         agent = FactualityAgent()
         claims = [Claim(text="Test claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.8)]
         evidence = Evidence(supporting=[], contradicting=[], evidence_confidence=0.5, conflicts_present=False)
 
-        assessments = agent.process(claims, evidence)
+        assessments, detail = agent.process(claims, evidence)
 
         assert len(assessments) == 1
         assert assessments[0].status == FactualityStatus.LIKELY_FALSE
+        assert detail.agent_type == "factuality"
         mock_llm.assert_called_once()
 
 
@@ -109,7 +113,7 @@ class TestPolicyAgent:
     """Tests for Policy Agent."""
 
     @patch('src.agents.policy_agent.PolicyAgent._load_policy')
-    @patch('src.agents.policy_agent.PolicyAgent._call_llm_structured')
+    @patch('src.agents.policy_agent.PolicyAgent._call_llm_structured_with_timing')
     def test_interpret_policy(self, mock_llm, mock_load_policy):
         """Test policy interpretation."""
         from src.agents.policy_agent import PolicyAgent
@@ -125,7 +129,7 @@ class TestPolicyAgent:
             allowed_contexts=[],
             reasoning="Violates health misinformation policy"
         )
-        mock_llm.return_value = mock_response
+        mock_llm.return_value = (mock_response, 5.0)
 
         agent = PolicyAgent()
         claims = [Claim(text="Test claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.8)]
@@ -137,8 +141,9 @@ class TestPolicyAgent:
             vulnerable_populations=[]
         )
 
-        interpretation = agent.process(claims, [], risk)
+        interpretation, detail = agent.process(claims, [], risk)
 
         assert interpretation.violation == ViolationStatus.YES
         assert interpretation.policy_confidence > 0.5
+        assert detail.agent_type == "policy"
         mock_llm.assert_called_once()

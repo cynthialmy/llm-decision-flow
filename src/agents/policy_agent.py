@@ -1,7 +1,8 @@
 """Policy Interpretation Agent: Interprets policy text and determines violations."""
 import os
+from typing import Tuple
 from src.agents.base import BaseAgent
-from src.models.schemas import PolicyInterpretation, ViolationStatus, Claim, FactualityAssessment, RiskAssessment
+from src.models.schemas import PolicyInterpretation, ViolationStatus, Claim, FactualityAssessment, RiskAssessment, AgentExecutionDetail
 from src.config import settings
 
 
@@ -47,7 +48,7 @@ class PolicyAgent(BaseAgent):
         claims: list[Claim],
         factuality_assessments: list[FactualityAssessment],
         risk_assessment: RiskAssessment
-    ) -> PolicyInterpretation:
+    ) -> Tuple[PolicyInterpretation, AgentExecutionDetail]:
         """
         Interpret policy and determine if content violates it.
 
@@ -111,11 +112,20 @@ Return a JSON object with this structure:
   "reasoning": "detailed reasoning"
 }}"""
 
-        response = self._call_llm_structured(
+        response, elapsed_ms = self._call_llm_structured_with_timing(
             prompt=user_prompt,
             system_prompt=system_prompt,
             output_model=PolicyInterpretation,
             temperature=0.3
         )
 
-        return response
+        detail = AgentExecutionDetail(
+            agent_name="Policy Interpretation Agent",
+            agent_type="policy",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            execution_time_ms=elapsed_ms,
+            status="completed"
+        )
+
+        return response, detail

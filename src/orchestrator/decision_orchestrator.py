@@ -7,7 +7,8 @@ from src.agents.factuality_agent import FactualityAgent
 from src.agents.policy_agent import PolicyAgent
 from src.models.schemas import (
     Decision, DecisionAction, RiskTier, AnalysisResponse,
-    Claim, RiskAssessment, Evidence, FactualityAssessment, PolicyInterpretation
+    Claim, RiskAssessment, Evidence, FactualityAssessment, PolicyInterpretation,
+    AgentExecutionDetail
 )
 
 
@@ -32,11 +33,15 @@ class DecisionOrchestrator:
         Returns:
             AnalysisResponse with decision and all intermediate results
         """
+        agent_executions: list[AgentExecutionDetail] = []
+
         # Step 1: Extract claims
-        claims = self.claim_agent.process(transcript)
+        claims, claim_detail = self.claim_agent.process(transcript)
+        agent_executions.append(claim_detail)
 
         # Step 2: Assess risk
-        risk_assessment = self.risk_agent.process(transcript, claims)
+        risk_assessment, risk_detail = self.risk_agent.process(transcript, claims)
+        agent_executions.append(risk_detail)
 
         # Step 3: Fast path for low-risk content (skip RAG)
         evidence: Optional[Evidence] = None
@@ -45,24 +50,46 @@ class DecisionOrchestrator:
 
         if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
             # Step 3a: Retrieve evidence (only for medium/high risk)
-            evidence = self.evidence_agent.process(claims)
+            evidence, evidence_detail = self.evidence_agent.process(claims)
+            agent_executions.append(evidence_detail)
 
             # Step 4: Assess factuality
-            factuality_assessments = self.factuality_agent.process(claims, evidence)
+            factuality_assessments, factuality_detail = self.factuality_agent.process(claims, evidence)
+            agent_executions.append(factuality_detail)
 
             # Step 5: Interpret policy
-            policy_interpretation = self.policy_agent.process(
+            policy_interpretation, policy_detail = self.policy_agent.process(
                 claims,
                 factuality_assessments,
                 risk_assessment
             )
+            agent_executions.append(policy_detail)
         else:
             # Low risk: Skip RAG, but still do policy interpretation with limited info
-            policy_interpretation = self.policy_agent.process(
+            evidence_detail = AgentExecutionDetail(
+                agent_name="Evidence Agent",
+                agent_type="evidence",
+                system_prompt="",
+                user_prompt="Skipped due to low risk routing decision.",
+                execution_time_ms=None,
+                status="skipped"
+            )
+            factuality_detail = AgentExecutionDetail(
+                agent_name="Factuality Agent",
+                agent_type="factuality",
+                system_prompt="",
+                user_prompt="Skipped due to low risk routing decision.",
+                execution_time_ms=None,
+                status="skipped"
+            )
+            agent_executions.extend([evidence_detail, factuality_detail])
+
+            policy_interpretation, policy_detail = self.policy_agent.process(
                 claims,
                 [],  # No factuality assessments for low risk
                 risk_assessment
             )
+            agent_executions.append(policy_detail)
 
         # Step 6: Make decision
         decision = self._make_decision(
@@ -86,7 +113,8 @@ class DecisionOrchestrator:
             evidence=evidence,
             factuality_assessments=factuality_assessments,
             policy_interpretation=policy_interpretation,
-            review_request_id=None  # Will be set if escalated
+            review_request_id=None,  # Will be set if escalated
+            agent_executions=agent_executions
         )
 
     def _make_decision(

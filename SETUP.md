@@ -208,20 +208,13 @@ curl http://localhost:8000/api/metrics
 curl http://localhost:8000/api/reviews
 ```
 
-#### 6. Test Frontend
-
-**Option 1: Simple HTTP Server (Recommended)**
+#### 6. Test Streamlit UI
 
 ```bash
-cd frontend
-python -m http.server 8080
+streamlit run streamlit_app.py
 ```
 
-Then navigate to `http://localhost:8080` in your browser.
-
-**Option 2: Open Directly**
-
-Simply open `frontend/index.html` in your web browser. Note: Some features may not work due to CORS restrictions when opening files directly.
+Then navigate to `http://localhost:8501` in your browser to access the interactive UI.
 
 ---
 
@@ -241,32 +234,22 @@ uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 
 Server will start on `http://localhost:8000`
 
-### Start the Frontend
+### Start the Streamlit UI
 
 **Important**: Make sure the backend server is running first (see above).
-
-**Option 1: Using Python HTTP Server (Recommended)**
 
 Open a new terminal window and run:
 
 ```bash
-cd frontend
-python -m http.server 8080
+streamlit run streamlit_app.py
 ```
 
-Then open your browser and navigate to:
-- **Main Interface**: `http://localhost:8080/index.html`
-- **Review Queue**: `http://localhost:8080/review.html`
-- **Dashboard**: `http://localhost:8080/dashboard.html`
-
-**Option 2: Open HTML Files Directly**
-
-You can also open the HTML files directly in your browser:
-- `frontend/index.html` - Content analysis interface
-- `frontend/review.html` - Human review queue
-- `frontend/dashboard.html` - Metrics dashboard
-
-**Note**: When opening files directly (not via HTTP server), some features may not work due to browser CORS restrictions. Using the HTTP server is recommended.
+The Streamlit UI will open automatically in your browser at `http://localhost:8501`. This provides:
+- **Content Analysis Interface** - Submit transcripts and view analysis results
+- **Decision Flow Visualization** - Interactive graph showing the execution path
+- **Agent Execution Details** - Inspect prompts and responses for each agent
+- **Review Queue** - View and handle items requiring human review
+- **Metrics Dashboard** - Monitor system trust metrics
 
 ### API Endpoints
 
@@ -279,7 +262,7 @@ You can also open the HTML files directly in your browser:
 
 ### Demo Flow
 
-1. Submit a transcript via the web UI (`frontend/index.html`)
+1. Submit a transcript via the Streamlit UI
 2. System processes through agent pipeline:
    - Claim extraction
    - Risk assessment
@@ -383,7 +366,7 @@ llm-decision-flow/
 │   │   ├── routes/      # API route handlers
 │   │   └── main.py      # FastAPI app initialization
 │   └── governance/      # Governance and metrics
-├── frontend/            # Web UI (HTML, JavaScript)
+├── streamlit_app.py    # Streamlit UI application
 ├── policies/            # Policy files
 ├── data/                # Data and evidence
 │   └── evidence/       # Evidence documents for RAG
@@ -421,8 +404,8 @@ The application will automatically detect and use your agent!
 After setup and testing:
 
 1. Review the [README.md](README.md) for system architecture and design principles
-2. Explore the API endpoints using the frontend or curl commands
-3. Check the metrics dashboard to monitor system health
-4. Review pending items in the review queue
+2. Explore the API endpoints using the Streamlit UI or curl commands
+3. Check the metrics dashboard in Streamlit to monitor system health
+4. Review pending items in the review queue via Streamlit
 
 For more details on the system design, see [README.md](README.md).

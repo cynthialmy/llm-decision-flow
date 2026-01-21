@@ -22,22 +22,31 @@ class TestDecisionOrchestrator:
         mock_claim
     ):
         """Test that low-risk content skips RAG."""
-        from src.models.schemas import Claim, Domain, RiskAssessment, PolicyInterpretation, ViolationStatus
+        from src.models.schemas import Claim, Domain, RiskAssessment, PolicyInterpretation, ViolationStatus, AgentExecutionDetail
 
         # Mock agents
-        mock_claim.return_value = [Claim(text="Low risk claim", domain=Domain.OTHER, is_explicit=True, confidence=0.8)]
-        mock_risk.return_value = RiskAssessment(
+        mock_claim.return_value = (
+            [Claim(text="Low risk claim", domain=Domain.OTHER, is_explicit=True, confidence=0.8)],
+            AgentExecutionDetail(agent_name="Claim Agent", agent_type="claim", system_prompt="", user_prompt="")
+        )
+        mock_risk.return_value = (
+            RiskAssessment(
             tier=RiskTier.LOW,
             reasoning="Low risk",
             potential_harm="Minimal",
             estimated_exposure="Limited",
             vulnerable_populations=[]
+            ),
+            AgentExecutionDetail(agent_name="Risk Agent", agent_type="risk", system_prompt="", user_prompt="")
         )
-        mock_policy.return_value = PolicyInterpretation(
-            violation=ViolationStatus.NO,
-            policy_confidence=0.8,
-            allowed_contexts=[],
-            reasoning="No violation"
+        mock_policy.return_value = (
+            PolicyInterpretation(
+                violation=ViolationStatus.NO,
+                policy_confidence=0.8,
+                allowed_contexts=[],
+                reasoning="No violation"
+            ),
+            AgentExecutionDetail(agent_name="Policy Agent", agent_type="policy", system_prompt="", user_prompt="")
         )
 
         orchestrator = DecisionOrchestrator()
@@ -67,39 +76,54 @@ class TestDecisionOrchestrator:
         """Test that high-risk content goes through full pipeline."""
         from src.models.schemas import (
             Claim, Domain, RiskAssessment, Evidence, FactualityAssessment,
-            FactualityStatus, PolicyInterpretation, ViolationStatus
+            FactualityStatus, PolicyInterpretation, ViolationStatus, AgentExecutionDetail
         )
 
         # Mock agents
-        mock_claim.return_value = [Claim(text="High risk claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.9)]
-        mock_risk.return_value = RiskAssessment(
+        mock_claim.return_value = (
+            [Claim(text="High risk claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.9)],
+            AgentExecutionDetail(agent_name="Claim Agent", agent_type="claim", system_prompt="", user_prompt="")
+        )
+        mock_risk.return_value = (
+            RiskAssessment(
             tier=RiskTier.HIGH,
             reasoning="High risk",
             potential_harm="Severe",
             estimated_exposure="Wide",
             vulnerable_populations=["elderly"]
+            ),
+            AgentExecutionDetail(agent_name="Risk Agent", agent_type="risk", system_prompt="", user_prompt="")
         )
-        mock_evidence.return_value = Evidence(
-            supporting=[],
-            contradicting=[],
-            evidence_confidence=0.5,
-            conflicts_present=False
+        mock_evidence.return_value = (
+            Evidence(
+                supporting=[],
+                contradicting=[],
+                evidence_confidence=0.5,
+                conflicts_present=False
+            ),
+            AgentExecutionDetail(agent_name="Evidence Agent", agent_type="evidence", system_prompt="", user_prompt="")
         )
-        mock_factuality.return_value = [
-            FactualityAssessment(
-                claim_text="High risk claim",
-                status=FactualityStatus.LIKELY_FALSE,
-                confidence=0.8,
-                reasoning="False",
-                evidence_summary="Contradicted"
-            )
-        ]
-        mock_policy.return_value = PolicyInterpretation(
-            violation=ViolationStatus.YES,
-            violation_type="Health misinformation",
-            policy_confidence=0.9,
-            allowed_contexts=[],
-            reasoning="Violates policy"
+        mock_factuality.return_value = (
+            [
+                FactualityAssessment(
+                    claim_text="High risk claim",
+                    status=FactualityStatus.LIKELY_FALSE,
+                    confidence=0.8,
+                    reasoning="False",
+                    evidence_summary="Contradicted"
+                )
+            ],
+            AgentExecutionDetail(agent_name="Factuality Agent", agent_type="factuality", system_prompt="", user_prompt="")
+        )
+        mock_policy.return_value = (
+            PolicyInterpretation(
+                violation=ViolationStatus.YES,
+                violation_type="Health misinformation",
+                policy_confidence=0.9,
+                allowed_contexts=[],
+                reasoning="Violates policy"
+            ),
+            AgentExecutionDetail(agent_name="Policy Agent", agent_type="policy", system_prompt="", user_prompt="")
         )
 
         orchestrator = DecisionOrchestrator()
