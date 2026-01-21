@@ -288,3 +288,116 @@ See [SETUP.md](SETUP.md) for complete installation, configuration, and testing i
 3. Agentic workflow with guardrails (3 min)
 4. Policy vs factuality distinction (2 min)
 5. Human escalation & metrics (2 min)
+
+
+
+
+## Tool Selection & Rationale
+
+### **Overall Principle**
+
+Select tools based on **risk surface, cost efficiency, latency sensitivity, and governance requirements**, not model capability alone. Use the *cheapest, fastest, most controllable* tool that is sufficient for each decision layer.
+
+---
+
+### **1. Groq (LLM) — Claim Extraction**
+
+**Role**
+
+* Extract factual claims from transcripts with structured output.
+
+**Rationale**
+
+* Claim extraction is **high-volume, low-policy risk, and highly parallelizable**.
+* Benefits most from **ultra-low latency and throughput**, not deep reasoning.
+* Errors are recoverable downstream (Risk / Factuality / Policy).
+
+**Positioning**
+
+* Front-of-pipeline accelerator.
+* No direct enforcement impact.
+
+---
+
+### **2. Zentropi SLM (CoPE-style) — Risk + Policy**
+
+**Role**
+
+* Risk tiering (Low / Medium / High).
+* Policy interpretation and violation classification.
+
+**Rationale**
+
+* Risk and policy decisions are **repetitive, policy-bound, and cost-sensitive at scale**.
+* Policy-steerable SLMs provide:
+
+  * Lower latency and cost
+  * Higher consistency
+  * Easier policy updates without retraining
+* Ideal for **first-pass enforcement logic** with confidence thresholds.
+
+**Positioning**
+
+* Default decision engine.
+* Escalates only low-confidence or conflicting cases.
+
+---
+
+### **3. Azure OpenAI / Foundry (LLM) — Factuality + Fallback**
+
+**Role**
+
+* Evidence-based factuality assessment.
+* Fallback for any low-confidence Risk or Policy decisions.
+
+**Rationale**
+
+* Factuality is the **highest-risk reasoning surface**:
+
+  * External evidence
+  * Nuanced interpretation
+  * Direct trust impact
+* Requires **strong reasoning, traceability, and auditability**.
+* Lower call volume due to risk-gated execution.
+
+**Positioning**
+
+* Precision layer, not throughput layer.
+* Preserved for safety, credibility, and incident response.
+
+---
+
+### **4. Internal RAG (Primary Evidence Source)**
+
+**Role**
+
+* Retrieve curated supporting / contradicting evidence.
+
+**Rationale**
+
+* Ensures **consistency, explainability, and governance**.
+* Avoids volatility and manipulation risk of live web search.
+* Enables reproducible enforcement decisions.
+
+---
+
+### **5. Web Search / External KBs (Exception Path Only)**
+
+**Role**
+
+* Supplement evidence for **high-risk, novel, time-sensitive claims**.
+
+**Rationale**
+
+* External search increases variance and governance risk.
+* Used only when internal evidence confidence is insufficient.
+
+---
+
+## Final Architectural Intent
+
+* **Fast models where mistakes are cheap**
+* **Steerable models where policy consistency matters**
+* **Frontier models where trust impact is highest**
+* **Explicit routing over agent autonomy**
+* **Reversible, confidence-gated automation**
