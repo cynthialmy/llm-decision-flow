@@ -1,7 +1,9 @@
 # LLM‑Powered Misinformation Decision System (Policy‑Aware)
 
+> *This demo shows how a policy‑aware, agent‑orchestrated system can make responsible moderation decisions under uncertainty by combining model reasoning, policy logic, and human judgment—optimized for platform trust rather than automation.*
+
 **Purpose of this document**
-This README / Notion spec describes a *demo‑grade* but *interview‑ready* implementation of a Policy‑Aware, Agent‑Orchestrated misinformation decision system.
+This doc describes a *demo‑grade* implementation of a Policy‑Aware, Agent‑Orchestrated misinformation decision system.
 
 The goal is **not** to build a production system, but to demonstrate *Senior PM‑level system thinking* across:
 
@@ -277,16 +279,10 @@ See [SETUP.md](SETUP.md) for installation instructions and [FOUNDRY_SETUP.md](FO
 
 ---
 
-## 10. How to Demo This in an Interview (10 Minutes)
+## 10. How to Demo This (10 Minutes)
 
 1. Problem framing (1 min)
 2. System overview (2 min)
 3. Agentic workflow with guardrails (3 min)
 4. Policy vs factuality distinction (2 min)
 5. Human escalation & metrics (2 min)
-
----
-
-## 11. One‑Line Summary (For Interview Close)
-
-> *This demo shows how a policy‑aware, agent‑orchestrated system can make responsible moderation decisions under uncertainty by combining model reasoning, policy logic, and human judgment—optimized for platform trust rather than automation.*
