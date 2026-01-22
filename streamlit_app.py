@@ -381,10 +381,19 @@ def _render_pie_chart(title: str, labels: List[str], values: List[float]) -> Non
         count = int(round(pct * total / 100.0))
         return f"{pct:.0f}% ({count})"
 
-    fig, ax = plt.subplots(figsize=(4, 3))
-    ax.pie(values, labels=labels, autopct=_autopct, textprops={"fontsize": 9})
+    fig, ax = plt.subplots(figsize=(3, 2.4))
+    wedges, _, _ = ax.pie(values, labels=None, autopct=_autopct, textprops={"fontsize": 9})
     ax.set_title(title)
     ax.axis("equal")
+    ax.legend(
+        wedges,
+        labels,
+        loc="center",
+        bbox_to_anchor=(0.5, 0),
+        frameon=True,
+        framealpha=0.5,
+        fontsize=8,
+    )
     fig.tight_layout()
     st.pyplot(fig, clear_figure=True)
 
@@ -399,7 +408,7 @@ def _render_bar_chart(
         st.caption(f"{title}: No data available.")
         return
     total = sum(values)
-    fig, ax = plt.subplots(figsize=(4, 3))
+    fig, ax = plt.subplots(figsize=(3, 2.4))
     bars = ax.bar(labels, values)
     ax.set_title(title)
     ax.set_ylabel("Rate")
@@ -745,12 +754,6 @@ def main() -> None:
         metrics_calculator = MetricsCalculator()
         metrics = metrics_calculator.calculate_metrics(days=7)
 
-        st.markdown("**Volume & Coverage**")
-        volume_col1, volume_col2 = st.columns(2)
-        with volume_col1:
-            st.metric("Total cases (7d)", metrics.get("total_decisions", 0))
-        with volume_col2:
-            st.metric("Evidence gaps (7d)", metrics.get("evidence_gap_count", 0))
         risk_counts = metrics.get("case_count_by_risk_tier", {})
         decision_counts = metrics.get("case_count_by_decision_action", {})
         risk_labels = list(risk_counts.keys())
@@ -758,10 +761,10 @@ def main() -> None:
         decision_labels = list(decision_counts.keys())
         decision_values = [decision_counts[label] for label in decision_labels]
 
-        row1_col1, row1_col2 = st.columns(2)
-        with row1_col1:
+        chart_col1, chart_col2, chart_col3, chart_col4 = st.columns(4)
+        with chart_col1:
             _render_pie_chart("Risk Tier Distribution", risk_labels, risk_values)
-        with row1_col2:
+        with chart_col2:
             _render_pie_chart("Decision Type Distribution", decision_labels, decision_values)
 
         total_decisions = metrics.get("total_decisions", 0)
@@ -769,27 +772,43 @@ def main() -> None:
         auto_count = int(round(total_decisions * auto_rate)) if total_decisions else 0
         human_count = max(total_decisions - auto_count, 0)
 
-        row2_col1, row2_col2 = st.columns(2)
-        with row2_col1:
+        with chart_col3:
             _render_pie_chart(
                 "Auto vs Human Review",
                 ["Auto-resolved", "Human review"],
                 [auto_count, human_count]
             )
-        with row2_col2:
-            _render_bar_chart(
-                "Quality Rates",
-                ["Disagreement", "Appeal overturn"],
-                [
-                    metrics.get("model_human_disagreement", 0.0),
-                    metrics.get("appeal_overturn_rate", 0.0),
-                ],
-                total_count=total_decisions
+        with chart_col4:
+            reversals = metrics.get("reversals", 0)
+            total_reviews = metrics.get("total_reviews", 0)
+            disagreement_rate = (
+                reversals / total_reviews if total_reviews > 0 else 0.0
             )
+            st.markdown("**Disagreement**")
+            st.markdown(
+                f"<div style='font-size: 40px; line-height: 1.1;'>"
+                f"{disagreement_rate:.0%}</div>",
+                unsafe_allow_html=True,
+            )
+            st.caption(f"{reversals} / {total_reviews} reviews")
 
         st.subheader("Recent Decisions")
         decisions = load_recent_decisions()
         if decisions:
+            decision_rows = [
+                {
+                    "id": d.id,
+                    "created_at": d.created_at,
+                    "action": d.decision_action,
+                    "risk_tier": d.risk_assessment_json.get("tier") if d.risk_assessment_json else None,
+                    "policy_version": d.policy_version,
+                    "confidence": d.confidence,
+                }
+                for d in decisions
+            ]
+            st.metric("Total cases (7d)", metrics.get("total_decisions", 0))
+            st.dataframe(decision_rows, width="stretch")
+            st.metric("Evidence gaps (7d)", metrics.get("evidence_gap_count", 0))
             st.markdown("**Evidence gaps (targeted enrichment)**")
             gap_rows = []
             for decision in decisions:
@@ -807,18 +826,6 @@ def main() -> None:
             else:
                 st.caption("No evidence gaps found in recent decisions.")
 
-            decision_rows = [
-                {
-                    "id": d.id,
-                    "created_at": d.created_at,
-                    "action": d.decision_action,
-                    "risk_tier": d.risk_assessment_json.get("tier") if d.risk_assessment_json else None,
-                    "policy_version": d.policy_version,
-                    "confidence": d.confidence,
-                }
-                for d in decisions
-            ]
-            st.dataframe(decision_rows, width="stretch")
             selected_id = st.selectbox("Inspect decision", [row["id"] for row in decision_rows])
             selected = next((d for d in decisions if d.id == selected_id), None)
             if selected:
