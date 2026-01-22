@@ -90,7 +90,7 @@ class TestFactualityAgent:
     def test_assess_factuality(self, mock_llm):
         """Test factuality assessment."""
         from src.agents.factuality_agent import FactualityAgent
-        from src.models.schemas import FactualityAssessment, FactualityStatus, Evidence, EvidenceItem
+        from src.models.schemas import FactualityAssessment, FactualityStatus, Evidence, EvidenceItem, SourceType
 
         # Mock LLM response
         mock_response = Mock()
@@ -100,14 +100,36 @@ class TestFactualityAgent:
                 status=FactualityStatus.LIKELY_FALSE,
                 confidence=0.8,
                 reasoning="Contradicted by evidence",
-                evidence_summary="Multiple sources contradict"
+                evidence_summary="Multiple sources contradict",
+                evidence_map={
+                    "supports": [],
+                    "contradicts": ["Vaccines are safe. (Source: who.int)"],
+                    "does_not_address": []
+                },
+                quoted_evidence=["Vaccines are safe. (Source: who.int)"]
             )
         ]
         mock_llm.return_value = (mock_response, 5.0)
 
         agent = FactualityAgent()
         claims = [Claim(text="Test claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.8)]
-        evidence = Evidence(supporting=[], contradicting=[], contextual=[], evidence_confidence=0.5, conflicts_present=False)
+        evidence = Evidence(
+            supporting=[
+                EvidenceItem(
+                    text="Vaccines are safe.",
+                    source="who.int",
+                    source_quality="authoritative",
+                    source_type=SourceType.AUTHORITATIVE,
+                    url="https://www.who.int/",
+                    relevance_score=0.9
+                )
+            ],
+            contradicting=[],
+            contextual=[],
+            evidence_confidence=0.5,
+            conflicts_present=False,
+            evidence_gap=False
+        )
 
         assessments, detail = agent.process(claims, evidence)
 

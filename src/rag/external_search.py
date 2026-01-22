@@ -1,11 +1,12 @@
 """External search clients with allowlist controls."""
 from __future__ import annotations
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 import httpx
 
 from src.config import settings
+from src.models.schemas import SourceType
 
 
 class ExternalSearchClient:
@@ -47,11 +48,13 @@ class ExternalSearchClient:
             url = result.get("link", "")
             if not self._allowed_domain(url):
                 continue
+            source_type = self._infer_source_type(url)
             items.append({
                 "title": result.get("title", ""),
                 "snippet": result.get("snippet", ""),
                 "url": url,
                 "source": urlparse(url).netloc,
+                "source_type": source_type.value if source_type else None,
             })
         return items
 
@@ -75,11 +78,13 @@ class ExternalSearchClient:
             title = result.get("title", "")
             snippet = result.get("snippet", "")
             url = f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}"
+            source_type = self._infer_source_type(url)
             items.append({
                 "title": title,
                 "snippet": snippet,
                 "url": url,
                 "source": "wikipedia.org",
+                "source_type": source_type.value if source_type else None,
             })
         return items
 
@@ -90,3 +95,18 @@ class ExternalSearchClient:
                 results.extend(self.serper_search(query))
             results.extend(self.wikipedia_search(query))
         return results
+
+    @staticmethod
+    def _infer_source_type(url: str) -> Optional[SourceType]:
+        host = urlparse(url).netloc.lower()
+        if host.endswith(".gov") or host.endswith(".edu"):
+            return SourceType.AUTHORITATIVE
+        if any(host.endswith(domain) for domain in ["who.int", "cdc.gov", "nih.gov"]):
+            return SourceType.AUTHORITATIVE
+        if any(host.endswith(domain) for domain in ["reuters.com", "apnews.com"]):
+            return SourceType.HIGH_CREDIBILITY
+        if any(host.endswith(domain) for domain in ["factcheck.org", "snopes.com", "politifact.com"]):
+            return SourceType.FACT_CHECK
+        if host.endswith("wikipedia.org"):
+            return SourceType.HIGH_CREDIBILITY
+        return SourceType.EXTERNAL

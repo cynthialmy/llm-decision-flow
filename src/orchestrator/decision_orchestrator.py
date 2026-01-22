@@ -1,5 +1,5 @@
 """Decision Orchestrator: Coordinates agent pipeline and makes final decisions."""
-from typing import Optional
+from typing import Optional, Callable
 from src.agents.claim_agent import ClaimAgent
 from src.agents.risk_agent import RiskAgent
 from src.agents.evidence_agent import EvidenceAgent
@@ -11,7 +11,7 @@ from src.rag.vector_store import VectorStore
 from src.llm.groq_client import GroqClient
 from src.models.schemas import (
     Decision, DecisionAction, RiskTier, AnalysisResponse,
-    Claim, RiskAssessment, Evidence, FactualityAssessment, PolicyInterpretation, EvidenceItem,
+    Claim, RiskAssessment, Evidence, FactualityAssessment, PolicyInterpretation, EvidenceItem, SourceType,
     AgentExecutionDetail
 )
 
@@ -27,7 +27,11 @@ class DecisionOrchestrator:
         self.factuality_agent = FactualityAgent()
         self.policy_agent = PolicyAgent()
 
-    def analyze(self, transcript: str) -> AnalysisResponse:
+    def analyze(
+        self,
+        transcript: str,
+        progress_callback: Optional[Callable[[str, str], None]] = None
+    ) -> AnalysisResponse:
         """
         Execute full agent pipeline and return analysis result.
 
@@ -39,12 +43,20 @@ class DecisionOrchestrator:
         """
         agent_executions: list[AgentExecutionDetail] = []
 
+        def report_progress(stage: str, status: str) -> None:
+            if progress_callback:
+                progress_callback(stage, status)
+
         # Step 1: Extract claims
+        report_progress("Claim extraction", "started")
         claims, claim_detail = self.claim_agent.process(transcript)
         agent_executions.append(claim_detail)
         claim_confidence = claim_detail.confidence or 0.0
+        report_progress("Claim extraction", "completed")
+        report_progress("Claim decomposition", "completed")
 
         # Step 2: Assess risk
+        report_progress("Risk & policy classification", "started")
         risk_assessment, risk_detail = self.risk_agent.process(transcript, claims)
         agent_executions.append(risk_detail)
 
@@ -56,8 +68,10 @@ class DecisionOrchestrator:
 
         if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and risk_confident:
             # Step 3a: Retrieve evidence (only for medium/high risk)
+            report_progress("Evidence retrieval", "started")
             evidence, evidence_detail = self.evidence_agent.process(claims)
             agent_executions.append(evidence_detail)
+            report_progress("Evidence retrieval", "completed")
 
             # Step 3b: External search for medium/high-risk + high-novelty
             if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
@@ -79,8 +93,10 @@ class DecisionOrchestrator:
                             evidence.evidence_gap_reason = ". ".join(reason_parts) + ". " + (evidence.evidence_gap_reason or "")
 
             # Step 4: Assess factuality
+            report_progress("Claim-evidence evaluation", "started")
             factuality_assessments, factuality_detail = self.factuality_agent.process(claims, evidence)
             agent_executions.append(factuality_detail)
+            report_progress("Claim-evidence evaluation", "completed")
 
             # Step 5: Interpret policy
             policy_interpretation, policy_detail = self.policy_agent.process(
@@ -89,8 +105,11 @@ class DecisionOrchestrator:
                 risk_assessment
             )
             agent_executions.append(policy_detail)
+            report_progress("Risk & policy classification", "completed")
         else:
             # Low risk: Skip RAG, but still do policy interpretation with limited info
+            report_progress("Evidence retrieval", "skipped")
+            report_progress("Claim-evidence evaluation", "skipped")
             evidence_detail = AgentExecutionDetail(
                 agent_name="Evidence Agent",
                 agent_type="evidence",
@@ -115,6 +134,7 @@ class DecisionOrchestrator:
                 risk_assessment
             )
             agent_executions.append(policy_detail)
+            report_progress("Risk & policy classification", "completed")
 
         # Step 6: Make decision
         decision = self._make_decision(
@@ -291,7 +311,7 @@ class DecisionOrchestrator:
     @staticmethod
     def _classify_external_evidence(claim: str, evidence_text: str) -> str:
         """Classify external evidence as supporting, contradicting, or contextual.
-        
+
         Returns: "supporting", "contradicting", or "contextual"
         """
         try:
@@ -303,14 +323,14 @@ Claim: {claim}
 Evidence: {evidence_text}
 
 Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
-            
+
             response = groq.chat(
                 prompt=prompt,
                 system_prompt="You are a fact-checking classifier. Classify evidence as supporting, contradicting, or contextual. Respond with only one word.",
                 temperature=0.1,
                 max_tokens=15
             )
-            
+
             classification = response["content"].strip().lower()
             # More robust classification parsing
             if any(word in classification for word in ["support", "agree", "confirm", "true", "correct"]):
@@ -347,6 +367,8 @@ Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
                 external_items.append({
                     "text": text,
                     "source": result.get("source") or "external",
+                    "url": result.get("url"),
+                    "source_type": result.get("source_type"),
                     "claim": claim.text,
                 })
 
@@ -354,20 +376,23 @@ Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
         supporting_items = []
         contradicting_items = []
         contextual_items = []
-        
+
         for item in external_items:
             classification = DecisionOrchestrator._classify_external_evidence(
                 claim=item["claim"],
                 evidence_text=item["text"]
             )
+            source_type = item.get("source_type")
             evidence_item = EvidenceItem(
                 text=item["text"],
                 source=item["source"],
-                source_quality="external",
+                source_quality=item.get("source_type") or "external",
+                source_type=SourceType(source_type) if source_type else None,
+                url=item.get("url"),
                 timestamp=None,
                 relevance_score=0.5,  # External results get moderate relevance
             )
-            
+
             if classification == "supporting":
                 supporting_items.append(evidence_item)
             elif classification == "contradicting":
@@ -379,7 +404,7 @@ Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
         evidence.supporting.extend(supporting_items)
         evidence.contradicting.extend(contradicting_items)
         evidence.contextual.extend(contextual_items)
-        
+
         # Update evidence confidence if we found supporting/contradicting evidence
         if supporting_items or contradicting_items:
             total_classified = len(supporting_items) + len(contradicting_items)
@@ -390,6 +415,21 @@ Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
         if evidence.supporting == [] and evidence.contradicting == []:
             evidence.evidence_gap = True
             evidence.evidence_gap_reason = evidence.evidence_gap_reason or "No supporting or contradicting internal evidence."
+        else:
+            credible_types = {
+                SourceType.AUTHORITATIVE,
+                SourceType.HIGH_CREDIBILITY,
+                SourceType.SCIENTIFIC,
+                SourceType.FACT_CHECK,
+                SourceType.INTERNAL,
+            }
+            credible_items = [
+                item for item in (evidence.supporting + evidence.contradicting)
+                if item.source_type in credible_types
+            ]
+            if credible_items:
+                evidence.evidence_gap = False
+                evidence.evidence_gap_reason = None
 
         if settings.allow_external_enrichment and (supporting_items or contradicting_items or contextual_items):
             vector_store = VectorStore()

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
 from src.models.database import DecisionRecord, ReviewRecord, SessionLocal
-from src.models.schemas import AnalysisResponse, Decision, ReviewRequest
+from src.models.schemas import AnalysisResponse, Decision, ReviewRequest, ReviewerFeedback
 from src.config import settings
 import json
 
@@ -33,13 +33,13 @@ class GovernanceLogger:
             Decision record ID
         """
         # Convert Pydantic models to dicts for JSON storage
-        claims_json = [claim.dict() for claim in analysis_response.claims]
-        risk_json = analysis_response.risk_assessment.dict()
-        evidence_json = analysis_response.evidence.dict() if analysis_response.evidence else None
-        factuality_json = [fa.dict() for fa in analysis_response.factuality_assessments] if analysis_response.factuality_assessments else None
-        policy_json = analysis_response.policy_interpretation.dict() if analysis_response.policy_interpretation else None
+        claims_json = [claim.model_dump() for claim in analysis_response.claims]
+        risk_json = analysis_response.risk_assessment.model_dump()
+        evidence_json = analysis_response.evidence.model_dump() if analysis_response.evidence else None
+        factuality_json = [fa.model_dump() for fa in analysis_response.factuality_assessments] if analysis_response.factuality_assessments else None
+        policy_json = analysis_response.policy_interpretation.model_dump() if analysis_response.policy_interpretation else None
 
-        agent_executions_json = [detail.dict() for detail in analysis_response.agent_executions]
+        agent_executions_json = [detail.model_dump() for detail in analysis_response.agent_executions]
 
         decision_record = DecisionRecord(
             transcript=transcript,
@@ -123,21 +123,39 @@ class GovernanceLogger:
                 escalation_reason=None
             )
 
-        return ReviewRequest(
-            id=review_record.id,
-            transcript=decision_record.transcript,
-            claims=claims,
-            risk_assessment=risk_assessment,
-            evidence=evidence,
-            factuality_assessments=factuality_assessments,
-            policy_interpretation=policy_interpretation,
-            system_decision=system_decision,
-            created_at=review_record.created_at,
-            reviewed_at=review_record.reviewed_at,
-            human_decision=human_decision,
-            human_rationale=review_record.human_rationale,
-            reviewer_feedback=review_record.reviewer_feedback_json
-        )
+        # Parse reviewer feedback if present
+        reviewer_feedback = None
+        if review_record.reviewer_feedback_json:
+            try:
+                if isinstance(review_record.reviewer_feedback_json, dict):
+                    reviewer_feedback = ReviewerFeedback(**review_record.reviewer_feedback_json)
+                else:
+                    reviewer_feedback = review_record.reviewer_feedback_json
+            except Exception:
+                # If parsing fails, keep as dict
+                reviewer_feedback = review_record.reviewer_feedback_json
+
+        payload = {
+            "id": review_record.id,
+            "transcript": decision_record.transcript,
+            "claims": [claim.model_dump() for claim in claims],
+            "risk_assessment": risk_assessment.model_dump(),
+            "evidence": evidence.model_dump() if evidence else None,
+            "factuality_assessments": [fa.model_dump() for fa in factuality_assessments],
+            "policy_interpretation": policy_interpretation.model_dump() if policy_interpretation else None,
+            "system_decision": system_decision.model_dump(),
+            "created_at": review_record.created_at,
+            "reviewed_at": review_record.reviewed_at,
+            "human_decision": human_decision.model_dump() if human_decision else None,
+            "human_rationale": review_record.human_rationale,
+            "reviewer_feedback": (
+                reviewer_feedback.model_dump()
+                if isinstance(reviewer_feedback, ReviewerFeedback)
+                else reviewer_feedback
+            ),
+        }
+
+        return ReviewRequest.model_validate(payload)
 
     def list_pending_reviews(self) -> list[ReviewRequest]:
         """List all pending review requests."""
@@ -151,12 +169,24 @@ class GovernanceLogger:
             if self.get_review_request(review.id) is not None
         ]
 
+    def list_reviewed_reviews(self, limit: int = 50) -> list[ReviewRequest]:
+        """List recently reviewed requests."""
+        reviewed_reviews = self.db.query(ReviewRecord).filter(
+            ReviewRecord.status == "reviewed"
+        ).order_by(ReviewRecord.reviewed_at.desc()).limit(limit).all()
+
+        return [
+            self.get_review_request(review.id)
+            for review in reviewed_reviews
+            if self.get_review_request(review.id) is not None
+        ]
+
     def submit_human_decision(
         self,
         review_id: int,
         human_decision: Decision,
         human_rationale: str,
-        reviewer_feedback: Optional[dict] = None
+        reviewer_feedback: Optional[ReviewerFeedback] = None
     ) -> bool:
         """
         Submit human decision for a review.
@@ -177,9 +207,40 @@ class GovernanceLogger:
         review_record.human_decision_rationale = human_decision.rationale
         review_record.human_rationale = human_rationale
         if reviewer_feedback is not None:
-            review_record.reviewer_feedback_json = reviewer_feedback
+            if isinstance(reviewer_feedback, ReviewerFeedback):
+                review_record.reviewer_feedback_json = reviewer_feedback.model_dump()
+            else:
+                review_record.reviewer_feedback_json = reviewer_feedback
         review_record.status = "reviewed"
         review_record.reviewed_at = datetime.utcnow()
+
+        self.db.commit()
+        return True
+
+    def reset_review_to_pending(self, review_id: int, clear_human_decision: bool = True) -> bool:
+        """
+        Reset a reviewed request back to pending status.
+
+        Args:
+            review_id: Review record ID
+            clear_human_decision: If True, clears human decision fields for a full reset
+
+        Returns:
+            True if successful, False otherwise
+        """
+        review_record = self.db.query(ReviewRecord).filter(ReviewRecord.id == review_id).first()
+        if not review_record:
+            return False
+
+        review_record.status = "pending"
+        review_record.reviewed_at = None
+
+        if clear_human_decision:
+            # Clear human decision fields for a full reset
+            review_record.human_decision_action = None
+            review_record.human_decision_rationale = None
+            review_record.human_rationale = None
+            review_record.reviewer_feedback_json = None
 
         self.db.commit()
         return True

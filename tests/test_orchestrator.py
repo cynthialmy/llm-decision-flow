@@ -109,7 +109,9 @@ class TestDecisionOrchestrator:
                 contradicting=[],
                 contextual=[],
                 evidence_confidence=0.5,
-                conflicts_present=False
+                conflicts_present=False,
+                evidence_gap=True,
+                evidence_gap_reason="No matching internal evidence found."
             ),
             AgentExecutionDetail(agent_name="Evidence Agent", agent_type="evidence", system_prompt="", user_prompt="")
         )
@@ -120,7 +122,13 @@ class TestDecisionOrchestrator:
                     status=FactualityStatus.LIKELY_FALSE,
                     confidence=0.8,
                     reasoning="False",
-                    evidence_summary="Contradicted"
+                    evidence_summary="Contradicted",
+                    evidence_map={
+                        "supports": [],
+                        "contradicts": ["Evidence quote"],
+                        "does_not_address": []
+                    },
+                    quoted_evidence=["Evidence quote"]
                 )
             ],
             AgentExecutionDetail(agent_name="Factuality Agent", agent_type="factuality", system_prompt="", user_prompt="")

@@ -572,33 +572,33 @@ flowchart TD
     Start([Transcript Input]) --> ClaimAgent["Claim Agent<br/>Groq LLM"]
     ClaimAgent --> ClaimsCache["Claims Cache"]
     ClaimsCache --> RiskSLM["Risk SLM<br/>Zentropi"]
-    
+
     RiskSLM -->|"Confidence >= 0.6"| RiskDecision["Risk Decision"]
     RiskSLM -->|"Confidence < 0.6"| RiskFallback["Risk Fallback<br/>Frontier LLM"]
     RiskFallback --> RiskDecision
-    
+
     RiskDecision -->|"Low Risk"| PolicySLM["Policy SLM<br/>Zentropi"]
     RiskDecision -->|"Medium/High Risk + Confidence >= 0.6"| EvidenceAgent["Evidence Agent<br/>RAG Vector Store"]
-    
+
     EvidenceAgent -->|"Similarity < 0.35 OR No Internal Evidence"| ExternalSearch["External Search<br/>Serper + Wikipedia"]
     ExternalSearch -->|"Classify Results"| EvidenceClassify["Classify Evidence<br/>Groq"]
     EvidenceClassify --> FactualityAgent["Factuality Agent<br/>Frontier LLM"]
     EvidenceAgent -->|"Has Internal Evidence"| FactualityAgent
-    
+
     FactualityAgent --> PolicySLM
     PolicySLM -->|"Confidence >= 0.7"| PolicyDecision["Policy Decision"]
     PolicySLM -->|"Confidence < 0.7"| PolicyFallback["Policy Fallback<br/>Frontier LLM"]
     PolicyFallback --> PolicyDecision
-    
+
     PolicyDecision --> QualityGate["Quality Gates<br/>Confidence Checks"]
     QualityGate --> DecisionOrch["Decision Orchestrator"]
-    
+
     DecisionOrch -->|"Low Risk + Policy >= 0.7"| Allow["Allow"]
     DecisionOrch -->|"Medium Risk + Policy >= 0.6"| LabelDownrank["Label / Downrank"]
     DecisionOrch -->|"Medium Risk + Policy < 0.6"| EscalateHuman["Escalate to Human"]
     DecisionOrch -->|"High Risk + Policy < 0.6"| EscalateHuman
     DecisionOrch -->|"High Risk + Policy >= 0.6"| HumanConfirm["Human Confirmation"]
-    
+
     EscalateHuman --> HumanReview["Human Review Interface"]
     HumanConfirm --> HumanReview
     HumanReview --> Governance["Governance Log"]
@@ -703,7 +703,7 @@ Human review is required when:
 
 - **SLM Timeout**: 2.5s per call (Zentropi)
 - **Frontier Timeout**: 6.0s per call (Azure OpenAI/Foundry)
-- **Token Budgets**: 
+- **Token Budgets**:
   - SLM: 800 tokens max
   - Frontier: 2000 tokens max
   - Claim extraction: 900 tokens max

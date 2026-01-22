@@ -1,6 +1,6 @@
 """Metrics calculation for trust metrics."""
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from src.models.database import DecisionRecord, ReviewRecord, MetricsSnapshot, SessionLocal
 from src.config import settings
@@ -35,6 +35,32 @@ class MetricsCalculator:
             return self._empty_metrics()
 
         total_decisions = len(decisions)
+
+        # Volume & coverage
+        case_count_by_risk_tier: Dict[str, int] = {
+            RiskTier.LOW.value: 0,
+            RiskTier.MEDIUM.value: 0,
+            RiskTier.HIGH.value: 0,
+        }
+        case_count_by_decision_action: Dict[str, int] = {}
+        evidence_gap_count = 0
+        evidence_gap_suggestions: List[str] = []
+
+        for decision in decisions:
+            tier = (decision.risk_assessment_json or {}).get("tier")
+            if tier in case_count_by_risk_tier:
+                case_count_by_risk_tier[tier] += 1
+            action = decision.decision_action
+            if action:
+                case_count_by_decision_action[action] = case_count_by_decision_action.get(action, 0) + 1
+
+            evidence = decision.evidence_json or {}
+            if evidence.get("evidence_gap"):
+                evidence_gap_count += 1
+                reason = evidence.get("evidence_gap_reason", "")
+                suggestion = self._suggest_enrichment_source(reason)
+                if suggestion and suggestion not in evidence_gap_suggestions:
+                    evidence_gap_suggestions.append(suggestion)
 
         # High-risk exposure rate
         high_risk_decisions = [
@@ -85,6 +111,11 @@ class MetricsCalculator:
             ])
             avg_time_to_decision = total_time / len(high_risk_with_reviews) if high_risk_with_reviews else 0.0
 
+        auto_resolved_rate = (
+            len([d for d in decisions if not d.requires_human_review]) / total_decisions
+            if total_decisions > 0 else 0.0
+        )
+
         return {
             "high_risk_exposure_rate": high_risk_exposure_rate,
             "over_enforcement_proxy": over_enforcement_proxy,
@@ -95,6 +126,19 @@ class MetricsCalculator:
             "total_reviews": total_reviews,
             "reversals": reversals,
             "period_days": days,
+            "case_count_by_risk_tier": case_count_by_risk_tier,
+            "case_count_by_decision_action": case_count_by_decision_action,
+            "evidence_gap_count": evidence_gap_count,
+            "evidence_gap_suggestions": evidence_gap_suggestions,
+            "claim_precision": None,
+            "claim_recall": None,
+            "appeal_overturn_rate": over_enforcement_proxy,
+            "user_trust_survey_score": None,
+            "creator_appeal_satisfaction": None,
+            "misinfo_prevalence_by_views": None,
+            "repeat_offender_rate": None,
+            "auto_resolved_rate": auto_resolved_rate,
+            "cost_per_verified_claim": None,
             "rollback_recommended": (
                 model_human_disagreement >= settings.disagreement_rollback_threshold
                 or avg_time_to_decision >= settings.latency_rollback_threshold_s
@@ -113,8 +157,38 @@ class MetricsCalculator:
             "total_reviews": 0,
             "reversals": 0,
             "period_days": 7,
+            "case_count_by_risk_tier": {
+                RiskTier.LOW.value: 0,
+                RiskTier.MEDIUM.value: 0,
+                RiskTier.HIGH.value: 0,
+            },
+            "case_count_by_decision_action": {},
+            "evidence_gap_count": 0,
+            "evidence_gap_suggestions": [],
+            "claim_precision": None,
+            "claim_recall": None,
+            "appeal_overturn_rate": 0.0,
+            "user_trust_survey_score": None,
+            "creator_appeal_satisfaction": None,
+            "misinfo_prevalence_by_views": None,
+            "repeat_offender_rate": None,
+            "auto_resolved_rate": 0.0,
+            "cost_per_verified_claim": None,
             "rollback_recommended": False
         }
+
+    @staticmethod
+    def _suggest_enrichment_source(reason: str) -> Optional[str]:
+        if not reason:
+            return None
+        reason_lower = reason.lower()
+        if "credibility" in reason_lower or "threshold" in reason_lower:
+            return "Prioritize authoritative or peer-reviewed sources"
+        if "no internal evidence" in reason_lower:
+            return "Add internal knowledge base coverage"
+        if "novelty" in reason_lower:
+            return "Expand external allowlist for high-novelty topics"
+        return "Review evidence coverage for this domain"
 
     def save_snapshot(self, metrics: Dict[str, Any]) -> int:
         """

@@ -27,22 +27,64 @@ class FactualityAgent(BaseAgent):
 
 IMPORTANT CONSTRAINTS:
 - Assess ONLY factual truthfulness, NOT policy violations
-- Use the evidence provided to make your assessment
+- Use ONLY the evidence provided to make your assessment
 - If evidence conflicts, mark as "Uncertain / Disputed"
 - Be conservative - mark as uncertain if evidence is insufficient
 - Provide clear reasoning for your assessment
 - Assign confidence scores (0.0 to 1.0) based on evidence strength
+- Quote evidence verbatim in your output
+- Map each claim to evidence that supports, contradicts, or does not address it
+- Do NOT introduce new facts or speculation
 
 Return a JSON object with a "assessments" array. Each assessment should have:
 - "claim_text": the claim being assessed
 - "status": "Likely True", "Likely False", or "Uncertain / Disputed"
 - "confidence": float between 0.0 and 1.0
 - "reasoning": explanation of assessment
-- "evidence_summary": summary of evidence considered"""
+- "evidence_summary": summary of evidence considered
+- "evidence_map": object with keys "supports", "contradicts", "does_not_address" (each is a list of quoted evidence strings)
+- "quoted_evidence": list of verbatim evidence strings used in the assessment"""
+
+        # If no credible evidence, return conservative "Insufficient Evidence" assessments
+        if evidence is None or evidence.evidence_gap or (not evidence.supporting and not evidence.contradicting):
+            assessments = [
+                FactualityAssessment(
+                    claim_text=claim.text,
+                    status=FactualityStatus.UNCERTAIN,
+                    confidence=0.0,
+                    reasoning="Insufficient evidence to assess this claim.",
+                    evidence_summary="No supporting or contradicting evidence available.",
+                    evidence_map={"supports": [], "contradicts": [], "does_not_address": []},
+                    quoted_evidence=[]
+                )
+                for claim in claims
+            ]
+            detail = AgentExecutionDetail(
+                agent_name="Factuality Agent",
+                agent_type="factuality",
+                system_prompt=system_prompt,
+                user_prompt="Insufficient evidence; returning conservative assessments.",
+                model_name=None,
+                model_provider="heuristic",
+                prompt_hash=self._prompt_hash(system_prompt, "insufficient_evidence"),
+                confidence=self._aggregate_confidence(assessments),
+                route_reason="insufficient_evidence",
+                fallback_used=False,
+                policy_version=settings.policy_version,
+                execution_time_ms=0.0,
+                status="completed"
+            )
+            return assessments, detail
 
         # Format evidence for prompt
-        supporting_text = "\n".join([f"- {item.text} (Source: {item.source})" for item in evidence.supporting[:5]])
-        contradicting_text = "\n".join([f"- {item.text} (Source: {item.source})" for item in evidence.contradicting[:5]])
+        supporting_text = "\n".join([
+            f"- {item.text} (Source: {item.source}, Type: {item.source_type or 'unknown'}, URL: {item.url or 'n/a'})"
+            for item in evidence.supporting[:5]
+        ])
+        contradicting_text = "\n".join([
+            f"- {item.text} (Source: {item.source}, Type: {item.source_type or 'unknown'}, URL: {item.url or 'n/a'})"
+            for item in evidence.contradicting[:5]
+        ])
 
         claims_text = "\n".join([f"- {claim.text}" for claim in claims])
 
@@ -65,7 +107,13 @@ Return a JSON object with this structure:
       "status": "Likely True|Likely False|Uncertain / Disputed",
       "confidence": 0.75,
       "reasoning": "detailed reasoning",
-      "evidence_summary": "summary of evidence"
+      "evidence_summary": "summary of evidence",
+      "evidence_map": {{
+        "supports": ["verbatim evidence quote"],
+        "contradicts": ["verbatim evidence quote"],
+        "does_not_address": ["verbatim evidence quote"]
+      }},
+      "quoted_evidence": ["verbatim evidence quote"]
     }}
   ]
 }}"""

@@ -21,7 +21,7 @@ class ClaimAgent(BaseAgent):
         Returns:
             List of extracted claims with domain tags
         """
-        system_prompt = """You are a conservative claim extraction agent. Your role is to identify factual claims in text.
+        system_prompt = """You are a conservative claim extraction agent. Your role is to identify factual claims in text and decompose compound claims into atomic sub-claims.
 
 IMPORTANT CONSTRAINTS:
 - Extract ONLY factual claims (statements that can be verified as true or false)
@@ -30,12 +30,18 @@ IMPORTANT CONSTRAINTS:
 - Do NOT infer intent or judge truthfulness
 - Distinguish between explicit claims (directly stated) and implicit claims (implied)
 - Assign confidence scores (0.0 to 1.0) based on how clear the claim is
+- For compound claims, include atomic sub-claims that are independently checkable
+- Sub-claims must inherit the domain of the parent claim
+- If a claim is atomic, return an empty subclaims array
 
 Return a JSON object with a "claims" array. Each claim should have:
 - "text": the claim text
 - "domain": one of "health", "civic", "finance", "other"
 - "is_explicit": boolean (true for explicit, false for implicit)
-- "confidence": float between 0.0 and 1.0"""
+- "confidence": float between 0.0 and 1.0
+- "subclaims": array of atomic sub-claims with the same fields
+- "parent_claim": optional, set for sub-claims (use parent text)
+- "decomposition_method": optional string describing how decomposition was done"""
 
         user_prompt = f"""Extract all factual claims from the following transcript:
 
@@ -48,7 +54,20 @@ Return the claims as a JSON object with this structure:
       "text": "claim text here",
       "domain": "health|civic|finance|other",
       "is_explicit": true,
-      "confidence": 0.85
+      "confidence": 0.85,
+      "subclaims": [
+        {{
+          "text": "atomic sub-claim text",
+          "domain": "health|civic|finance|other",
+          "is_explicit": true,
+          "confidence": 0.85,
+          "subclaims": [],
+          "parent_claim": "parent claim text",
+          "decomposition_method": "llm_atomic_decomposition"
+        }}
+      ],
+      "parent_claim": null,
+      "decomposition_method": "llm_atomic_decomposition"
     }}
   ]
 }}"""

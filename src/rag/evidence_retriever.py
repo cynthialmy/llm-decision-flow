@@ -2,7 +2,7 @@
 from typing import List, Optional
 from datetime import datetime
 from src.rag.vector_store import VectorStore
-from src.models.schemas import Evidence, EvidenceItem, Claim
+from src.models.schemas import Evidence, EvidenceItem, Claim, SourceType
 from src.config import settings
 
 
@@ -31,6 +31,7 @@ class EvidenceRetriever:
         """
         all_supporting = []
         all_contradicting = []
+        credible_items = 0
 
         for claim in claims:
             # Search for evidence related to this claim
@@ -47,13 +48,19 @@ class EvidenceRetriever:
                 if relevance_score < settings.evidence_similarity_cutoff:
                     continue
 
+                metadata = result.get('metadata', {}) or {}
+                source_type = self._infer_source_type(metadata, result.get('document', ''), metadata.get('source'))
                 evidence_item = EvidenceItem(
                     text=result['document'],
-                    source=result['metadata'].get('source', 'unknown'),
-                    source_quality=result['metadata'].get('quality', 'unknown'),
-                    timestamp=self._parse_timestamp(result['metadata'].get('timestamp')),
+                    source=metadata.get('source', 'unknown'),
+                    source_quality=metadata.get('quality', 'unknown'),
+                    source_type=source_type,
+                    url=metadata.get('url'),
+                    timestamp=self._parse_timestamp(metadata.get('timestamp')),
                     relevance_score=relevance_score  # Convert distance to relevance
                 )
+                if source_type and source_type != SourceType.EXTERNAL:
+                    credible_items += 1
 
                 # Simple heuristic: if distance is low, it's likely supporting
                 # In production, use a classifier to determine support vs contradiction
@@ -74,17 +81,40 @@ class EvidenceRetriever:
             evidence_confidence = support_ratio * 0.8  # Cap at 0.8 to account for uncertainty
 
         conflicts_present = len(all_contradicting) > 0
-        evidence_gap = total_items == 0
-        evidence_gap_reason = "No matching internal evidence found." if evidence_gap else None
+        evidence_gap = total_items == 0 or credible_items == 0
+        if total_items == 0:
+            evidence_gap_reason = "No matching internal evidence found."
+        elif credible_items == 0:
+            evidence_gap_reason = "No evidence met the credibility threshold."
+        else:
+            evidence_gap_reason = None
 
         return Evidence(
             supporting=all_supporting[:10],  # Limit to top 10
             contradicting=all_contradicting[:10],  # Limit to top 10
+            contextual=[],
             evidence_confidence=evidence_confidence,
             conflicts_present=conflicts_present,
             evidence_gap=evidence_gap,
             evidence_gap_reason=evidence_gap_reason
         )
+
+    @staticmethod
+    def _infer_source_type(metadata: dict, text: str, source: Optional[str]) -> Optional[SourceType]:
+        raw_type = (metadata.get("source_type") or metadata.get("quality") or "").lower()
+        if raw_type in {"authoritative", "official"}:
+            return SourceType.AUTHORITATIVE
+        if raw_type in {"scientific", "peer_reviewed", "peer-reviewed", "preprint"}:
+            return SourceType.SCIENTIFIC
+        if raw_type in {"fact_check", "fact-check"}:
+            return SourceType.FACT_CHECK
+        if raw_type in {"journalism", "news", "high_credibility"}:
+            return SourceType.HIGH_CREDIBILITY
+        if raw_type in {"internal"}:
+            return SourceType.INTERNAL
+        if source:
+            return SourceType.INTERNAL
+        return None
 
     def _parse_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
         """Parse timestamp string to datetime object."""

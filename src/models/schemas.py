@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class Domain(str, Enum):
@@ -42,16 +42,60 @@ class DecisionAction(str, Enum):
     HUMAN_CONFIRMATION = "Human Confirmation"
 
 
+class SourceType(str, Enum):
+    """Evidence source categories."""
+    AUTHORITATIVE = "authoritative"
+    HIGH_CREDIBILITY = "high_credibility"
+    SCIENTIFIC = "scientific"
+    FACT_CHECK = "fact_check"
+    INTERNAL = "internal"
+    EXTERNAL = "external"
+
+
+class ReviewerAction(str, Enum):
+    """Human reviewer action."""
+    CONFIRM = "confirm"
+    OVERRIDE = "override"
+    REQUEST_EVIDENCE = "request_evidence"
+    ESCALATE_POLICY = "escalate_policy"
+
+
+class ChangeProposal(BaseModel):
+    """Structured proposal for system updates after review."""
+    model_config = ConfigDict(protected_namespaces=())
+    prompt_updates: Optional[Dict[str, str]] = Field(default_factory=dict, description="Prompt edits by component")
+    threshold_updates: Optional[Dict[str, float]] = Field(default_factory=dict, description="Threshold adjustments")
+    weighting_updates: Optional[Dict[str, float]] = Field(default_factory=dict, description="Retrieval/source weight changes")
+    rationale: Optional[str] = Field(None, description="Reason for change proposal")
+
+
+class ReviewerFeedback(BaseModel):
+    """Structured reviewer feedback and change confirmation."""
+    model_config = ConfigDict(protected_namespaces=())
+    action: ReviewerAction = Field(..., description="Reviewer action")
+    review_time_seconds: Optional[float] = Field(None, description="Time spent reviewing")
+    reviewer_notes: Optional[str] = Field(None, description="Human reviewer notes")
+    proposed_change: Optional[ChangeProposal] = Field(None, description="Proposed system change package")
+    accepted_change: Optional[ChangeProposal] = Field(None, description="Accepted or edited change package")
+    previous_behavior: Optional[str] = Field(None, description="Summary of prior system behavior")
+    updated_behavior: Optional[str] = Field(None, description="Summary of updated system behavior")
+
+
 class Claim(BaseModel):
     """Extracted factual claim."""
+    model_config = ConfigDict(protected_namespaces=())
     text: str = Field(..., description="The claim text")
     domain: Domain = Field(..., description="Domain category")
     is_explicit: bool = Field(True, description="Whether claim is explicit or implicit")
     confidence: float = Field(0.0, ge=0.0, le=1.0, description="Extraction confidence")
+    subclaims: List["Claim"] = Field(default_factory=list, description="Atomic sub-claims if decomposed")
+    parent_claim: Optional[str] = Field(None, description="Parent claim text if this is a sub-claim")
+    decomposition_method: Optional[str] = Field(None, description="Method or prompt version for decomposition")
 
 
 class RiskAssessment(BaseModel):
     """Risk assessment result."""
+    model_config = ConfigDict(protected_namespaces=())
     tier: RiskTier = Field(..., description="Risk tier")
     reasoning: str = Field(..., description="Reasoning for risk assessment")
     confidence: float = Field(0.0, ge=0.0, le=1.0, description="Risk confidence")
@@ -64,15 +108,19 @@ class RiskAssessment(BaseModel):
 
 class EvidenceItem(BaseModel):
     """Single evidence item."""
+    model_config = ConfigDict(protected_namespaces=())
     text: str = Field(..., description="Evidence text")
     source: str = Field(..., description="Source identifier")
     source_quality: str = Field(..., description="Source quality assessment")
+    source_type: Optional[SourceType] = Field(None, description="Tiered source category")
+    url: Optional[str] = Field(None, description="Source URL")
     timestamp: Optional[datetime] = Field(None, description="Evidence timestamp")
     relevance_score: float = Field(0.0, ge=0.0, le=1.0, description="Relevance score")
 
 
 class Evidence(BaseModel):
     """Evidence retrieval result."""
+    model_config = ConfigDict(protected_namespaces=())
     supporting: List[EvidenceItem] = Field(default_factory=list, description="Supporting evidence")
     contradicting: List[EvidenceItem] = Field(default_factory=list, description="Contradicting evidence")
     contextual: List[EvidenceItem] = Field(default_factory=list, description="Context-only external evidence")
@@ -84,15 +132,22 @@ class Evidence(BaseModel):
 
 class FactualityAssessment(BaseModel):
     """Factuality assessment for a claim."""
+    model_config = ConfigDict(protected_namespaces=())
     claim_text: str = Field(..., description="The claim being assessed")
     status: FactualityStatus = Field(..., description="Factuality status")
     confidence: float = Field(0.0, ge=0.0, le=1.0, description="Assessment confidence")
     reasoning: str = Field(..., description="Reasoning for assessment")
     evidence_summary: str = Field(..., description="Summary of evidence considered")
+    evidence_map: Optional[Dict[str, List[str]]] = Field(
+        default_factory=dict,
+        description="Mapping: supports/contradicts/does_not_address to evidence quotes"
+    )
+    quoted_evidence: List[str] = Field(default_factory=list, description="Verbatim evidence snippets")
 
 
 class PolicyInterpretation(BaseModel):
     """Policy interpretation result."""
+    model_config = ConfigDict(protected_namespaces=())
     violation: ViolationStatus = Field(..., description="Violation status")
     violation_type: Optional[str] = Field(None, description="Type of violation if applicable")
     policy_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Policy interpretation confidence")
@@ -105,6 +160,7 @@ class PolicyInterpretation(BaseModel):
 
 class Decision(BaseModel):
     """Final decision result."""
+    model_config = ConfigDict(protected_namespaces=())
     action: DecisionAction = Field(..., description="Decision action")
     rationale: str = Field(..., description="Decision rationale")
     requires_human_review: bool = Field(False, description="Whether human review is required")
@@ -114,6 +170,7 @@ class Decision(BaseModel):
 
 class AgentExecutionDetail(BaseModel):
     """Agent execution details for UI inspection."""
+    model_config = ConfigDict(protected_namespaces=())
     agent_name: str = Field(..., description="Human-readable agent name")
     agent_type: str = Field(..., description="Agent type identifier")
     system_prompt: str = Field(..., description="System prompt used")
@@ -132,6 +189,7 @@ class AgentExecutionDetail(BaseModel):
 
 class ReviewRequest(BaseModel):
     """Human review request."""
+    model_config = ConfigDict(protected_namespaces=())
     id: Optional[int] = Field(None, description="Review request ID")
     transcript: str = Field(..., description="Original transcript")
     claims: List[Claim] = Field(..., description="Extracted claims")
@@ -144,16 +202,18 @@ class ReviewRequest(BaseModel):
     reviewed_at: Optional[datetime] = Field(None, description="Review timestamp")
     human_decision: Optional[Decision] = Field(None, description="Human reviewer's decision")
     human_rationale: Optional[str] = Field(None, description="Human reviewer's rationale")
-    reviewer_feedback: Optional[Dict[str, Any]] = Field(None, description="Structured reviewer feedback")
+    reviewer_feedback: Optional[ReviewerFeedback] = Field(None, description="Structured reviewer feedback")
 
 
 class AnalysisRequest(BaseModel):
     """Request for content analysis."""
+    model_config = ConfigDict(protected_namespaces=())
     transcript: str = Field(..., description="Content transcript to analyze")
 
 
 class AnalysisResponse(BaseModel):
     """Response from content analysis."""
+    model_config = ConfigDict(protected_namespaces=())
     decision: Decision = Field(..., description="Final decision")
     claims: List[Claim] = Field(..., description="Extracted claims")
     risk_assessment: RiskAssessment = Field(..., description="Risk assessment")
@@ -166,6 +226,10 @@ class AnalysisResponse(BaseModel):
 
 class HumanDecisionRequest(BaseModel):
     """Request to submit human decision."""
+    model_config = ConfigDict(protected_namespaces=())
     decision: Decision = Field(..., description="Human decision")
     rationale: str = Field(..., description="Human reviewer's rationale")
-    reviewer_feedback: Optional[Dict[str, Any]] = Field(None, description="Structured reviewer feedback")
+    reviewer_feedback: Optional[ReviewerFeedback] = Field(None, description="Structured reviewer feedback")
+
+
+Claim.model_rebuild()
