@@ -3,6 +3,8 @@ import os
 import time
 from typing import Tuple, Optional
 from src.agents.base import BaseAgent
+from src.agents.prompt_registry import render_prompt
+from src.governance.system_config_store import get_prompt_overrides, get_threshold_value
 from src.models.schemas import PolicyInterpretation, ViolationStatus, Claim, FactualityAssessment, RiskAssessment, AgentExecutionDetail
 from src.config import settings
 from src.llm.zentropi_client import ZentropiClient
@@ -65,23 +67,8 @@ class PolicyAgent(BaseAgent):
         Returns:
             PolicyInterpretation with violation status and reasoning
         """
-        system_prompt = """You are a policy interpretation agent. Your role is to interpret platform policy text and determine if content violates it.
-
-IMPORTANT CONSTRAINTS:
-- Policy text is provided as input - interpret it, don't apply hard-coded rules
-- Consider factuality, but factuality alone does not determine violations
-- Consider context (satire, personal experience, opinion)
-- Consider risk level in policy interpretation
-- You have NO enforcement authority - you only interpret policy
-- Provide confidence scores based on policy clarity
-
-Return a JSON object with:
-- "violation": "Yes", "No", or "Contextual"
-- "violation_type": type of violation if applicable (null if no violation)
-- "policy_confidence": float between 0.0 and 1.0
-- "allowed_contexts": array of allowed contexts (e.g., ["satire", "personal experience"])
-- "reasoning": detailed reasoning for interpretation
-- "conflict_detected": boolean indicating cross-policy conflict"""
+        prompt_overrides = get_prompt_overrides()
+        system_prompt = render_prompt("policy", "system_prompt", {}, overrides=prompt_overrides)
 
         # Format inputs
         claims_text = "\n".join([f"- {claim.text} ({claim.domain.value})" for claim in claims])
@@ -91,30 +78,18 @@ Return a JSON object with:
             for fa in factuality_assessments
         ])
 
-        user_prompt = f"""Interpret the following policy and determine if the content violates it:
-
-POLICY TEXT:
-{self.policy_text}
-
-CONTENT ANALYSIS:
-Claims:
-{claims_text}
-
-Factuality Assessments:
-{factuality_text}
-
-Risk Assessment: {risk_assessment.tier.value}
-Risk Reasoning: {risk_assessment.reasoning}
-
-Return a JSON object with this structure:
-{{
-  "violation": "Yes|No|Contextual",
-  "violation_type": "violation type or null",
-  "policy_confidence": 0.85,
-  "allowed_contexts": ["satire", "personal experience"],
-  "reasoning": "detailed reasoning",
-  "conflict_detected": false
-}}"""
+        user_prompt = render_prompt(
+            "policy",
+            "user_prompt",
+            {
+                "policy_text": self.policy_text,
+                "claims_text": claims_text,
+                "factuality_text": factuality_text,
+                "risk_tier": risk_assessment.tier.value,
+                "risk_reasoning": risk_assessment.reasoning,
+            },
+            overrides=prompt_overrides
+        )
 
         start_time = time.perf_counter()
         zentropi = ZentropiClient()
@@ -147,7 +122,8 @@ Return a JSON object with this structure:
                 slm_result = None
                 slm_error = f"Zentropi call failed: {exc}"
 
-        if slm_result is None or slm_result.policy_confidence < settings.policy_confidence_threshold:
+        policy_threshold = get_threshold_value("policy_confidence_threshold", settings.policy_confidence_threshold)
+        if slm_result is None or slm_result.policy_confidence < policy_threshold:
             fallback_used = True
             route_reason = "fallback_frontier"
             response = self._call_llm_structured(

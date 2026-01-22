@@ -2,6 +2,8 @@
 from typing import List, Tuple
 from pydantic import BaseModel
 from src.agents.base import BaseAgent
+from src.agents.prompt_registry import render_prompt
+from src.governance.system_config_store import get_prompt_overrides
 from src.models.schemas import FactualityAssessment, FactualityStatus, Claim, Evidence, AgentExecutionDetail
 from src.config import settings
 
@@ -23,27 +25,8 @@ class FactualityAgent(BaseAgent):
         Returns:
             List of factuality assessments
         """
-        system_prompt = """You are a factuality assessment agent. Your role is to assess whether claims are likely true, likely false, or uncertain based on available evidence.
-
-IMPORTANT CONSTRAINTS:
-- Assess ONLY factual truthfulness, NOT policy violations
-- Use ONLY the evidence provided to make your assessment
-- If evidence conflicts, mark as "Uncertain / Disputed"
-- Be conservative - mark as uncertain if evidence is insufficient
-- Provide clear reasoning for your assessment
-- Assign confidence scores (0.0 to 1.0) based on evidence strength
-- Quote evidence verbatim in your output
-- Map each claim to evidence that supports, contradicts, or does not address it
-- Do NOT introduce new facts or speculation
-
-Return a JSON object with a "assessments" array. Each assessment should have:
-- "claim_text": the claim being assessed
-- "status": "Likely True", "Likely False", or "Uncertain / Disputed"
-- "confidence": float between 0.0 and 1.0
-- "reasoning": explanation of assessment
-- "evidence_summary": summary of evidence considered
-- "evidence_map": object with keys "supports", "contradicts", "does_not_address" (each is a list of quoted evidence strings)
-- "quoted_evidence": list of verbatim evidence strings used in the assessment"""
+        prompt_overrides = get_prompt_overrides()
+        system_prompt = render_prompt("factuality", "system_prompt", {}, overrides=prompt_overrides)
 
         # If no credible evidence, return conservative "Insufficient Evidence" assessments
         if evidence is None or evidence.evidence_gap or (not evidence.supporting and not evidence.contradicting):
@@ -88,35 +71,16 @@ Return a JSON object with a "assessments" array. Each assessment should have:
 
         claims_text = "\n".join([f"- {claim.text}" for claim in claims])
 
-        user_prompt = f"""Assess the factuality of the following claims based on the provided evidence:
-
-Claims to Assess:
-{claims_text}
-
-Supporting Evidence:
-{supporting_text if supporting_text else "None"}
-
-Contradicting Evidence:
-{contradicting_text if contradicting_text else "None"}
-
-Return a JSON object with this structure:
-{{
-  "assessments": [
-    {{
-      "claim_text": "claim text",
-      "status": "Likely True|Likely False|Uncertain / Disputed",
-      "confidence": 0.75,
-      "reasoning": "detailed reasoning",
-      "evidence_summary": "summary of evidence",
-      "evidence_map": {{
-        "supports": ["verbatim evidence quote"],
-        "contradicts": ["verbatim evidence quote"],
-        "does_not_address": ["verbatim evidence quote"]
-      }},
-      "quoted_evidence": ["verbatim evidence quote"]
-    }}
-  ]
-}}"""
+        user_prompt = render_prompt(
+            "factuality",
+            "user_prompt",
+            {
+                "claims_text": claims_text,
+                "supporting_text": supporting_text if supporting_text else "None",
+                "contradicting_text": contradicting_text if contradicting_text else "None",
+            },
+            overrides=prompt_overrides
+        )
 
         # Define output model
         class FactualityResponse(BaseModel):

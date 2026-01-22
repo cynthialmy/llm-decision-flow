@@ -33,6 +33,7 @@ class DecisionRecord(Base):
     # Governance fields
     policy_version = Column(String, nullable=True)
     decision_version = Column(Integer, default=1)
+    system_config_version_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -61,6 +62,20 @@ class ReviewRecord(Base):
 
     # Relationship
     decision = relationship("DecisionRecord", back_populates="review")
+
+
+class SystemConfigVersion(Base):
+    """Database model for system configuration versions."""
+    __tablename__ = "system_config_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prompt_updates = Column(JSON, nullable=True)
+    threshold_updates = Column(JSON, nullable=True)
+    weighting_updates = Column(JSON, nullable=True)
+    rationale = Column(Text, nullable=True)
+    active = Column(Boolean, default=False)
+    source_review_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class MetricsSnapshot(Base):
@@ -109,6 +124,8 @@ def _ensure_schema(engine):
     with engine.connect() as conn:
         if not _has_column("decisions", "agent_executions_json"):
             conn.execute(sqlalchemy.text("ALTER TABLE decisions ADD COLUMN agent_executions_json JSON"))
+        if not _has_column("decisions", "system_config_version_id"):
+            conn.execute(sqlalchemy.text("ALTER TABLE decisions ADD COLUMN system_config_version_id INTEGER"))
         if not _has_column("reviews", "reviewer_feedback_json"):
             conn.execute(sqlalchemy.text("ALTER TABLE reviews ADD COLUMN reviewer_feedback_json JSON"))
         if not _has_column("reviews", "manual_override"):

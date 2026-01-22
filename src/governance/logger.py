@@ -5,6 +5,11 @@ from sqlalchemy.orm import Session
 from src.models.database import DecisionRecord, ReviewRecord, SessionLocal
 from src.models.schemas import AnalysisResponse, Decision, ReviewRequest, ReviewerFeedback
 from src.config import settings
+from src.governance.system_config_store import (
+    get_active_config_payload,
+    create_config_version,
+    has_meaningful_updates,
+)
 import json
 
 
@@ -41,6 +46,8 @@ class GovernanceLogger:
 
         agent_executions_json = [detail.model_dump() for detail in analysis_response.agent_executions]
 
+        active_config = get_active_config_payload()
+
         decision_record = DecisionRecord(
             transcript=transcript,
             decision_action=analysis_response.decision.action.value,
@@ -55,7 +62,8 @@ class GovernanceLogger:
             policy_interpretation_json=policy_json,
             agent_executions_json=agent_executions_json,
             policy_version=self.policy_version,
-            decision_version=1
+            decision_version=1,
+            system_config_version_id=active_config.get("version_id"),
         )
 
         self.db.add(decision_record)
@@ -261,6 +269,23 @@ class GovernanceLogger:
         review_record.reviewed_at = datetime.utcnow()
 
         self.db.commit()
+
+        if reviewer_feedback and reviewer_feedback.accepted_change:
+            change = reviewer_feedback.accepted_change
+            if has_meaningful_updates(
+                change.prompt_updates,
+                change.threshold_updates,
+                change.weighting_updates,
+                change.rationale,
+            ):
+                create_config_version(
+                    prompt_updates=change.prompt_updates,
+                    threshold_updates=change.threshold_updates,
+                    weighting_updates=change.weighting_updates,
+                    rationale=change.rationale,
+                    source_review_id=review_id,
+                    activate=True,
+                )
         return True
 
     def reset_review_to_pending(self, review_id: int, clear_human_decision: bool = True) -> bool:

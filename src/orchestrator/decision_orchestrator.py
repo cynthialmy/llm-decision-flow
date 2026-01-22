@@ -6,6 +6,7 @@ from src.agents.evidence_agent import EvidenceAgent
 from src.agents.factuality_agent import FactualityAgent
 from src.agents.policy_agent import PolicyAgent
 from src.config import settings
+from src.governance.system_config_store import get_threshold_value
 from src.rag.external_search import ExternalSearchClient
 from src.rag.vector_store import VectorStore
 from src.llm.groq_client import GroqClient
@@ -64,7 +65,8 @@ class DecisionOrchestrator:
         evidence: Optional[Evidence] = None
         factuality_assessments: list[FactualityAssessment] = []
         policy_interpretation: Optional[PolicyInterpretation] = None
-        risk_confident = risk_assessment.confidence >= settings.risk_confidence_threshold
+        risk_threshold = get_threshold_value("risk_confidence_threshold", settings.risk_confidence_threshold)
+        risk_confident = risk_assessment.confidence >= risk_threshold
 
         if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and risk_confident:
             # Step 3a: Retrieve evidence (only for medium/high risk)
@@ -79,14 +81,15 @@ class DecisionOrchestrator:
                 similarity_score = self._max_claim_similarity(claims)
                 # Also check if we have no internal evidence at all
                 has_internal_evidence = len(evidence.supporting) > 0 or len(evidence.contradicting) > 0
-                if similarity_score < settings.novelty_similarity_threshold or not has_internal_evidence:
+                novelty_threshold = get_threshold_value("novelty_similarity_threshold", settings.novelty_similarity_threshold)
+                if similarity_score < novelty_threshold or not has_internal_evidence:
                     # High novelty: similarity below threshold OR no internal evidence triggers external search
                     evidence = self._attach_external_context(evidence, claims)
                     # Mark that external search was used due to novelty
                     if evidence:
                         reason_parts = []
-                        if similarity_score < settings.novelty_similarity_threshold:
-                            reason_parts.append(f"High novelty (similarity: {similarity_score:.2f} < {settings.novelty_similarity_threshold})")
+                        if similarity_score < novelty_threshold:
+                            reason_parts.append(f"High novelty (similarity: {similarity_score:.2f} < {novelty_threshold})")
                         if not has_internal_evidence:
                             reason_parts.append("No internal evidence found")
                         if reason_parts:
@@ -262,16 +265,18 @@ class DecisionOrchestrator:
 
         # Low confidence gates (only for high-impact content)
         if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
-            if claim_confidence < settings.claim_confidence_threshold:
+            claim_threshold = get_threshold_value("claim_confidence_threshold", settings.claim_confidence_threshold)
+            if claim_confidence < claim_threshold:
                 return True
 
-            if risk_assessment.confidence < settings.risk_confidence_threshold:
+            risk_threshold = get_threshold_value("risk_confidence_threshold", settings.risk_confidence_threshold)
+            if risk_assessment.confidence < risk_threshold:
                 return True
 
         # High risk + low confidence
         if (risk_assessment.tier == RiskTier.HIGH and
             policy_interpretation and
-            policy_interpretation.policy_confidence < settings.policy_confidence_threshold):
+            policy_interpretation.policy_confidence < get_threshold_value("policy_confidence_threshold", settings.policy_confidence_threshold)):
             return True
 
         if (risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and

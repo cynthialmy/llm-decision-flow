@@ -16,6 +16,16 @@ from src.models.schemas import (
 from src.config import settings
 from src.governance.metrics import MetricsCalculator
 from src.governance.logger import GovernanceLogger
+from src.governance.system_config_store import (
+    get_active_config_payload,
+    get_thresholds_with_overrides,
+    get_weighting_overrides,
+    get_weightings_with_overrides,
+    get_prompt_overrides,
+    list_config_versions,
+    activate_config_version,
+)
+from src.agents.prompt_registry import get_prompt_texts
 from src.models.database import SessionLocal, DecisionRecord, ReviewRecord
 from src.rag.vector_store import VectorStore
 
@@ -31,6 +41,45 @@ def load_policy_text() -> str:
             return file.read()
     except Exception as exc:
         return f"Failed to load policy text: {exc}"
+
+
+def load_decision_flow_mermaid() -> str:
+    """Load Mermaid flowchart from API_Usage_Explanation.md."""
+    doc_path = os.path.join(os.path.dirname(__file__), "API_Usage_Explanation.md")
+    doc_path = os.path.abspath(doc_path)
+    if not os.path.exists(doc_path):
+        return ""
+    try:
+        with open(doc_path, "r", encoding="utf-8") as file:
+            content = file.read()
+    except Exception:
+        return ""
+
+    marker = "```mermaid"
+    if marker not in content:
+        return ""
+    block = content.split(marker, 1)[1]
+    if "```" not in block:
+        return ""
+    mermaid = block.split("```", 1)[0].strip()
+    return mermaid
+
+
+def render_mermaid(mermaid_code: str, height: int = 520) -> None:
+    """Render Mermaid chart in Streamlit."""
+    if not mermaid_code:
+        st.caption("Decision flow reference unavailable.")
+        return
+    html = f"""
+    <div class="mermaid">
+    {mermaid_code}
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({{ startOnLoad: true }});
+    </script>
+    """
+    st.components.v1.html(html, height=height, scrolling=True)
 
 
 def _status_color(status: str) -> str:
@@ -1139,6 +1188,27 @@ def main() -> None:
             st.markdown("**System Decision**")
             st.json(review.system_decision.model_dump())
 
+            st.subheader("System Configuration Versions")
+            active_config = get_active_config_payload()
+            active_version_id = active_config.get("version_id")
+            config_versions = list_config_versions(limit=50)
+            if config_versions:
+                version_options = {v.id: v for v in config_versions}
+                st.caption(f"Active version: {active_version_id or 'default'}")
+                selected_version_id = st.selectbox(
+                    "Select config version to activate",
+                    options=list(version_options.keys()),
+                    format_func=lambda x: f"Version {x} (created {version_options[x].created_at.strftime('%Y-%m-%d %H:%M:%S')})"
+                )
+                if st.button("Activate selected version", type="secondary"):
+                    if activate_config_version(selected_version_id):
+                        st.success(f"Activated config version {selected_version_id}.")
+                        st.rerun()
+                    else:
+                        st.error("Failed to activate config version.")
+            else:
+                st.caption("No saved config versions yet.")
+
             # Display existing reviewer feedback if available
             if review.reviewer_feedback:
                 st.subheader("Previous Reviewer Feedback")
@@ -1149,8 +1219,6 @@ def main() -> None:
                 else:
                     # Handle ReviewerFeedback object
                     st.markdown(f"**Action**: {feedback.action.value}")
-                    if feedback.review_time_seconds:
-                        st.markdown(f"**Review Time**: {feedback.review_time_seconds:.1f} seconds")
                     if feedback.reviewer_notes:
                         st.markdown(f"**Notes**: {feedback.reviewer_notes}")
                     if feedback.proposed_change:
@@ -1160,124 +1228,210 @@ def main() -> None:
                         st.markdown("**Accepted Change**:")
                         st.json(feedback.accepted_change.model_dump())
 
-            st.subheader("Submit Override / Feedback")
+            flow_col, submit_col = st.columns([1, 2])
+            with flow_col:
+                flow_chart = load_decision_flow_mermaid()
+                with st.expander("Decision Flow Reference", expanded=False):
+                    render_mermaid(flow_chart, height=560)
+                    if st.button("Open large view", key="open_flow_large"):
+                        st.session_state.show_flow_modal = True
 
-            # Decision override
-            action = st.selectbox("Decision override", [a.value for a in DecisionAction])
-            rationale = st.text_area("Rationale", height=120)
+                if st.session_state.get("show_flow_modal"):
+                    if hasattr(st, "dialog"):
+                        @st.dialog("Decision Flow Reference", width="large")
+                        def _render_flow_dialog():
+                            render_mermaid(flow_chart, height=820)
+                            if st.button("Close", type="secondary"):
+                                st.session_state.show_flow_modal = False
 
-            # Reviewer action
-            reviewer_action = st.selectbox(
-                "Reviewer Action",
-                [a.value for a in ReviewerAction],
-                help="Select the type of action you're taking"
-            )
+                        _render_flow_dialog()
+                    else:
+                        st.info("Upgrade Streamlit to use the popup view.")
 
-            # Review metadata
-            col1, col2 = st.columns(2)
-            with col1:
-                review_time_seconds = st.number_input(
-                    "Review Time (seconds)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=0.1,
-                    help="Time spent reviewing this case"
+            with submit_col:
+                st.subheader("Submit Override / Feedback")
+
+                # Decision override
+                action = st.selectbox("Decision override", [a.value for a in DecisionAction])
+                rationale = st.text_area("Rationale", height=120)
+
+                # Reviewer action
+                reviewer_action = st.selectbox(
+                    "Reviewer Action",
+                    [a.value for a in ReviewerAction],
+                    help="Select the type of action you're taking"
                 )
-            with col2:
+
                 reviewer_notes = st.text_area("Reviewer Notes", height=80, help="Additional notes about this review")
 
-            # Change proposal
-            with st.expander("System Change Proposal (Optional)", expanded=False):
-                st.markdown("Propose changes to system behavior based on this review.")
+                # Change proposal
+                with st.expander("System Change Proposal (Optional)", expanded=False):
+                    st.markdown("Propose changes to system behavior based on this review.")
 
-                prompt_updates = st.text_area(
-                    "Prompt Updates (JSON)",
-                    height=100,
-                    help='JSON object with component names as keys and prompt edits as values, e.g. {"claim_agent": "new prompt"}',
-                    value=""
+                prompt_overrides = get_prompt_overrides()
+                current_prompts = get_prompt_texts(prompt_overrides)
+                current_thresholds = get_thresholds_with_overrides()
+                current_weightings = get_weightings_with_overrides()
+
+                st.markdown("**Current Configuration (Reference)**")
+                with st.expander("Current prompts", expanded=False):
+                    st.json(current_prompts)
+                with st.expander("Current thresholds", expanded=False):
+                    st.json(current_thresholds)
+                with st.expander("Current weightings", expanded=False):
+                    st.json(current_weightings)
+
+                st.markdown("**Agent Prompt Editor**")
+                agent_labels = {
+                    "claim": "Claim Agent",
+                    "risk": "Risk Agent",
+                    "factuality": "Factuality Agent",
+                    "policy": "Policy Agent",
+                }
+                agent_key = st.selectbox(
+                    "Select agent to edit",
+                    options=list(agent_labels.keys()),
+                    format_func=lambda key: agent_labels.get(key, key),
                 )
 
-                threshold_updates = st.text_area(
-                    "Threshold Updates (JSON)",
-                    height=80,
-                    help='JSON object with threshold names and values, e.g. {"risk_confidence_threshold": 0.8}',
-                    value=""
-                )
+                current_agent_prompts = current_prompts.get(agent_key, {})
+                current_system_prompt = current_agent_prompts.get("system_prompt", "")
+                current_user_prompt = current_agent_prompts.get("user_prompt", "")
 
-                weighting_updates = st.text_area(
-                    "Weighting Updates (JSON)",
-                    height=80,
-                    help='JSON object with weighting adjustments, e.g. {"authoritative_weight": 1.2}',
-                    value=""
-                )
-
-                change_rationale = st.text_area(
-                    "Change Rationale",
-                    height=60,
-                    help="Explain why these changes are needed"
-                )
-
-                proposed_change = None
-                if prompt_updates or threshold_updates or weighting_updates or change_rationale:
-                    try:
-                        prompt_dict = json.loads(prompt_updates) if prompt_updates.strip() else {}
-                        threshold_dict = json.loads(threshold_updates) if threshold_updates.strip() else {}
-                        weighting_dict = json.loads(weighting_updates) if weighting_updates.strip() else {}
-
-                        proposed_change = ChangeProposal(
-                            prompt_updates=prompt_dict if isinstance(prompt_dict, dict) else {},
-                            threshold_updates=threshold_dict if isinstance(threshold_dict, dict) else {},
-                            weighting_updates=weighting_dict if isinstance(weighting_dict, dict) else {},
-                            rationale=change_rationale if change_rationale.strip() else None
-                        )
-                    except json.JSONDecodeError as e:
-                        st.warning(f"Invalid JSON in change proposal: {e}")
-                    except Exception as e:
-                        st.warning(f"Error creating change proposal: {e}")
-
-            # Accepted change (if editing the proposal)
-            accepted_change = None
-            if proposed_change:
-                edit_accepted = st.checkbox("Edit the proposed change before accepting")
-                if edit_accepted:
-                    accepted_prompt_updates = st.text_area(
-                        "Accepted Prompt Updates (JSON)",
-                        height=100,
-                        value=prompt_updates
+                sys_col_current, sys_col_edit = st.columns(2)
+                with sys_col_current:
+                    st.text_area(
+                        "Current system prompt",
+                        value=current_system_prompt,
+                        height=200,
+                        disabled=True,
+                        key=f"current_system_{agent_key}",
                     )
-                    accepted_threshold_updates = st.text_area(
-                        "Accepted Threshold Updates (JSON)",
-                        height=80,
-                        value=threshold_updates
+                with sys_col_edit:
+                    edited_system_prompt = st.text_area(
+                        "Edit system prompt",
+                        value=current_system_prompt,
+                        height=200,
+                        key=f"edit_system_{agent_key}",
                     )
-                    accepted_weighting_updates = st.text_area(
-                        "Accepted Weighting Updates (JSON)",
-                        height=80,
-                        value=weighting_updates
+
+                user_col_current, user_col_edit = st.columns(2)
+                with user_col_current:
+                    st.text_area(
+                        "Current user prompt",
+                        value=current_user_prompt,
+                        height=200,
+                        disabled=True,
+                        key=f"current_user_{agent_key}",
                     )
-                    accepted_rationale = st.text_area(
-                        "Accepted Rationale",
+                with user_col_edit:
+                    edited_user_prompt = st.text_area(
+                        "Edit user prompt",
+                        value=current_user_prompt,
+                        height=200,
+                        key=f"edit_user_{agent_key}",
+                    )
+
+                st.markdown("**Bulk JSON Edits**")
+                prompt_col_current, prompt_col_edit = st.columns(2)
+                with prompt_col_current:
+                    st.text_area(
+                        "Current prompt JSON",
+                        value=json.dumps(current_prompts, indent=2),
+                        height=220,
+                        disabled=True,
+                        key="current_prompts_json",
+                    )
+                with prompt_col_edit:
+                    prompt_updates = st.text_area(
+                        "Prompt Updates (JSON)",
+                        height=220,
+                        help='JSON object keyed by agent: {"claim": {"system_prompt": "...", "user_prompt": "..."}}',
+                        value=json.dumps(current_prompts, indent=2),
+                        key="prompt_updates_json",
+                    )
+
+                threshold_col_current, threshold_col_edit = st.columns(2)
+                with threshold_col_current:
+                    st.text_area(
+                        "Current thresholds JSON",
+                        value=json.dumps(current_thresholds, indent=2),
+                        height=160,
+                        disabled=True,
+                        key="current_thresholds_json",
+                    )
+                with threshold_col_edit:
+                    threshold_updates = st.text_area(
+                        "Threshold Updates (JSON)",
+                        height=160,
+                        help='JSON object with threshold names and values, e.g. {"risk_confidence_threshold": 0.8}',
+                        value=json.dumps(current_thresholds, indent=2),
+                        key="threshold_updates_json",
+                    )
+
+                st.caption("Weightings are evidence source multipliers (e.g., authoritative > external).")
+                weighting_col_current, weighting_col_edit = st.columns(2)
+                with weighting_col_current:
+                    st.text_area(
+                        "Current weightings JSON",
+                        value=json.dumps(current_weightings, indent=2),
+                        height=140,
+                        disabled=True,
+                        key="current_weightings_json",
+                    )
+                with weighting_col_edit:
+                    weighting_updates = st.text_area(
+                        "Evidence source weights (JSON)",
+                        height=140,
+                        help='JSON object with source weights, e.g. {"authoritative": 1.2, "external": 0.9}',
+                        value=json.dumps(current_weightings, indent=2),
+                        key="weighting_updates_json",
+                    )
+
+                    change_rationale = st.text_area(
+                        "Change Rationale",
                         height=60,
-                        value=change_rationale
+                        help="Explain why these changes are needed"
                     )
 
-                    try:
-                        accepted_prompt_dict = json.loads(accepted_prompt_updates) if accepted_prompt_updates.strip() else {}
-                        accepted_threshold_dict = json.loads(accepted_threshold_updates) if accepted_threshold_updates.strip() else {}
-                        accepted_weighting_dict = json.loads(accepted_weighting_updates) if accepted_weighting_updates.strip() else {}
+                    proposed_change = None
+                    if prompt_updates or threshold_updates or weighting_updates or change_rationale:
+                        try:
+                            prompt_dict = json.loads(prompt_updates) if prompt_updates.strip() else {}
+                            threshold_dict = json.loads(threshold_updates) if threshold_updates.strip() else {}
+                            weighting_dict = json.loads(weighting_updates) if weighting_updates.strip() else {}
 
-                        accepted_change = ChangeProposal(
-                            prompt_updates=accepted_prompt_dict if isinstance(accepted_prompt_dict, dict) else {},
-                            threshold_updates=accepted_threshold_dict if isinstance(accepted_threshold_dict, dict) else {},
-                            weighting_updates=accepted_weighting_dict if isinstance(accepted_weighting_dict, dict) else {},
-                            rationale=accepted_rationale if accepted_rationale.strip() else None
-                        )
-                    except json.JSONDecodeError as e:
-                        st.warning(f"Invalid JSON in accepted change: {e}")
-                    except Exception as e:
-                        st.warning(f"Error creating accepted change: {e}")
-                else:
-                    accepted_change = proposed_change
+                            if prompt_dict == current_prompts:
+                                prompt_dict = {}
+                            if threshold_dict == current_thresholds:
+                                threshold_dict = {}
+                            if weighting_dict == current_weightings:
+                                weighting_dict = {}
+
+                            agent_updates = {}
+                            if edited_system_prompt.strip() and edited_system_prompt != current_system_prompt:
+                                agent_updates["system_prompt"] = edited_system_prompt
+                            if edited_user_prompt.strip() and edited_user_prompt != current_user_prompt:
+                                agent_updates["user_prompt"] = edited_user_prompt
+                            if agent_updates:
+                                prompt_dict = prompt_dict if isinstance(prompt_dict, dict) else {}
+                                prompt_dict[agent_key] = {
+                                    **(prompt_dict.get(agent_key, {}) if isinstance(prompt_dict.get(agent_key), dict) else {}),
+                                    **agent_updates,
+                                }
+
+                            proposed_change = ChangeProposal(
+                                prompt_updates=prompt_dict if isinstance(prompt_dict, dict) else {},
+                                threshold_updates=threshold_dict if isinstance(threshold_dict, dict) else {},
+                                weighting_updates=weighting_dict if isinstance(weighting_dict, dict) else {},
+                                rationale=change_rationale if change_rationale.strip() else None
+                            )
+                        except json.JSONDecodeError as e:
+                            st.warning(f"Invalid JSON in change proposal: {e}")
+                        except Exception as e:
+                            st.warning(f"Error creating change proposal: {e}")
+
+                accepted_change = proposed_change
 
             if st.button("Submit human decision", type="primary"):
                 try:
@@ -1292,7 +1446,6 @@ def main() -> None:
                     # Create ReviewerFeedback
                     reviewer_feedback = ReviewerFeedback(
                         action=ReviewerAction(reviewer_action),
-                        review_time_seconds=review_time_seconds if review_time_seconds > 0 else None,
                         reviewer_notes=reviewer_notes.strip() if reviewer_notes.strip() else None,
                         proposed_change=proposed_change,
                         accepted_change=accepted_change

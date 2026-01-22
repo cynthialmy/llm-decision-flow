@@ -4,6 +4,7 @@ from datetime import datetime
 from src.rag.vector_store import VectorStore
 from src.models.schemas import Evidence, EvidenceItem, Claim, SourceType
 from src.config import settings
+from src.governance.system_config_store import get_threshold_value, get_weightings_with_overrides
 
 
 class EvidenceRetriever:
@@ -45,11 +46,16 @@ class EvidenceRetriever:
             # This is a simplified approach - in production, you'd use a classifier
             for result in search_results:
                 relevance_score = 1.0 - (result['distance'] or 0.0)
-                if relevance_score < settings.evidence_similarity_cutoff:
-                    continue
-
+                cutoff = get_threshold_value("evidence_similarity_cutoff", settings.evidence_similarity_cutoff)
                 metadata = result.get('metadata', {}) or {}
                 source_type = self._infer_source_type(metadata, result.get('document', ''), metadata.get('source'))
+                weights = get_weightings_with_overrides()
+                weight_key = source_type.value if source_type else "external"
+                weight_multiplier = weights.get(weight_key, 1.0)
+                weighted_score = min(relevance_score * weight_multiplier, 1.0)
+                if weighted_score < cutoff:
+                    continue
+
                 evidence_item = EvidenceItem(
                     text=result['document'],
                     source=metadata.get('source', 'unknown'),
@@ -57,7 +63,7 @@ class EvidenceRetriever:
                     source_type=source_type,
                     url=metadata.get('url'),
                     timestamp=self._parse_timestamp(metadata.get('timestamp')),
-                    relevance_score=relevance_score  # Convert distance to relevance
+                    relevance_score=weighted_score
                 )
                 if source_type and source_type != SourceType.EXTERNAL:
                     credible_items += 1

@@ -569,35 +569,35 @@ The system uses a multi-stage pipeline with confidence-gated routing, SLM-first 
 
 ```mermaid
 flowchart TD
-    Start([Transcript Input]) --> ClaimAgent["Claim Agent<br/>Groq LLM"]
+    Start([Transcript Input]) --> ClaimAgent["Claim Agent\nGroq LLM"]
     ClaimAgent --> ClaimsCache["Claims Cache"]
-    ClaimsCache --> RiskSLM["Risk SLM<br/>Zentropi"]
+    ClaimsCache --> RiskSLM["Risk SLM\nZentropi"]
 
-    RiskSLM -->|"Confidence >= 0.6"| RiskDecision["Risk Decision"]
-    RiskSLM -->|"Confidence < 0.6"| RiskFallback["Risk Fallback<br/>Frontier LLM"]
+    RiskSLM -->|"Confidence ge 0.6"| RiskDecision["Risk Decision"]
+    RiskSLM -->|"Confidence lt 0.6"| RiskFallback["Risk Fallback\nFrontier LLM"]
     RiskFallback --> RiskDecision
 
-    RiskDecision -->|"Low Risk"| PolicySLM["Policy SLM<br/>Zentropi"]
-    RiskDecision -->|"Medium/High Risk + Confidence >= 0.6"| EvidenceAgent["Evidence Agent<br/>RAG Vector Store"]
+    RiskDecision -->|"Low Risk"| PolicySLM["Policy SLM\nZentropi"]
+    RiskDecision -->|"Medium or High Risk and Confidence ge 0.6"| EvidenceAgent["Evidence Agent\nRAG Vector Store"]
 
-    EvidenceAgent -->|"Similarity < 0.35 OR No Internal Evidence"| ExternalSearch["External Search<br/>Serper + Wikipedia"]
-    ExternalSearch -->|"Classify Results"| EvidenceClassify["Classify Evidence<br/>Groq"]
-    EvidenceClassify --> FactualityAgent["Factuality Agent<br/>Frontier LLM"]
+    EvidenceAgent -->|"Similarity lt 0.35 or No Internal Evidence"| ExternalSearch["External Search\nSerper + Wikipedia"]
+    ExternalSearch -->|"Classify Results"| EvidenceClassify["Classify Evidence\nGroq"]
+    EvidenceClassify --> FactualityAgent["Factuality Agent\nFrontier LLM"]
     EvidenceAgent -->|"Has Internal Evidence"| FactualityAgent
 
     FactualityAgent --> PolicySLM
-    PolicySLM -->|"Confidence >= 0.7"| PolicyDecision["Policy Decision"]
-    PolicySLM -->|"Confidence < 0.7"| PolicyFallback["Policy Fallback<br/>Frontier LLM"]
+    PolicySLM -->|"Confidence ge 0.7"| PolicyDecision["Policy Decision"]
+    PolicySLM -->|"Confidence lt 0.7"| PolicyFallback["Policy Fallback\nFrontier LLM"]
     PolicyFallback --> PolicyDecision
 
-    PolicyDecision --> QualityGate["Quality Gates<br/>Confidence Checks"]
+    PolicyDecision --> QualityGate["Quality Gates\nConfidence Checks"]
     QualityGate --> DecisionOrch["Decision Orchestrator"]
 
-    DecisionOrch -->|"Low Risk + Policy >= 0.7"| Allow["Allow"]
-    DecisionOrch -->|"Medium Risk + Policy >= 0.6"| LabelDownrank["Label / Downrank"]
-    DecisionOrch -->|"Medium Risk + Policy < 0.6"| EscalateHuman["Escalate to Human"]
-    DecisionOrch -->|"High Risk + Policy < 0.6"| EscalateHuman
-    DecisionOrch -->|"High Risk + Policy >= 0.6"| HumanConfirm["Human Confirmation"]
+    DecisionOrch -->|"Low Risk and Policy ge 0.7"| Allow["Allow"]
+    DecisionOrch -->|"Medium Risk and Policy ge 0.6"| LabelDownrank["Label / Downrank"]
+    DecisionOrch -->|"Medium Risk and Policy lt 0.6"| EscalateHuman["Escalate to Human"]
+    DecisionOrch -->|"High Risk and Policy lt 0.6"| EscalateHuman
+    DecisionOrch -->|"High Risk and Policy ge 0.6"| HumanConfirm["Human Confirmation"]
 
     EscalateHuman --> HumanReview["Human Review Interface"]
     HumanConfirm --> HumanReview

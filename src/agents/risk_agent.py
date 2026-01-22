@@ -2,6 +2,8 @@
 from typing import Tuple, Optional
 import time
 from src.agents.base import BaseAgent
+from src.agents.prompt_registry import render_prompt
+from src.governance.system_config_store import get_prompt_overrides, get_threshold_value
 from src.models.schemas import RiskAssessment, RiskTier, Claim, AgentExecutionDetail
 from src.llm.zentropi_client import ZentropiClient
 from src.config import settings
@@ -24,46 +26,16 @@ class RiskAgent(BaseAgent):
         Returns:
             RiskAssessment with tier and reasoning
         """
-        system_prompt = """You are a risk assessment agent. Your role is to assess the potential risk of content based on:
-
-1. Potential harm: What harm could this content cause if false or misleading?
-2. Estimated exposure: How many people might see this content?
-3. Vulnerable populations: Which groups might be particularly affected?
-
-IMPORTANT CONSTRAINTS:
-- You do NOT have access to evidence about truthfulness
-- You do NOT apply policy rules
-- You assess risk based solely on the content's potential impact
-- Risk tiers: Low, Medium, High
-- Be conservative - err on the side of higher risk if uncertain
-
-Return a JSON object with:
-- "tier": "Low", "Medium", or "High"
-- "reasoning": explanation of risk assessment
-- "confidence": float between 0.0 and 1.0
-- "potential_harm": description of potential harm
-- "estimated_exposure": description of exposure level
-- "vulnerable_populations": array of affected vulnerable groups"""
+        prompt_overrides = get_prompt_overrides()
+        system_prompt = render_prompt("risk", "system_prompt", {}, overrides=prompt_overrides)
 
         claims_text = "\n".join([f"- {claim.text} ({claim.domain.value})" for claim in claims])
-
-        user_prompt = f"""Assess the risk of the following content:
-
-Transcript:
-{transcript}
-
-Extracted Claims:
-{claims_text}
-
-Return a JSON object with this structure:
-{{
-  "tier": "Low|Medium|High",
-  "reasoning": "detailed reasoning",
-  "confidence": 0.72,
-  "potential_harm": "description of potential harm",
-  "estimated_exposure": "description of exposure level",
-  "vulnerable_populations": ["group1", "group2"]
-}}"""
+        user_prompt = render_prompt(
+            "risk",
+            "user_prompt",
+            {"transcript": transcript, "claims_text": claims_text},
+            overrides=prompt_overrides
+        )
 
         start_time = time.perf_counter()
         zentropi = ZentropiClient()
@@ -96,7 +68,8 @@ Return a JSON object with this structure:
                 slm_result = None
                 slm_error = f"Zentropi call failed: {exc}"
 
-        if slm_result is None or slm_result.confidence < settings.risk_confidence_threshold:
+        risk_threshold = get_threshold_value("risk_confidence_threshold", settings.risk_confidence_threshold)
+        if slm_result is None or slm_result.confidence < risk_threshold:
             fallback_used = True
             route_reason = "fallback_frontier"
             response = self._call_llm_structured(

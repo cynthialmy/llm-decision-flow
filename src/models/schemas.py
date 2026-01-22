@@ -63,7 +63,7 @@ class ReviewerAction(str, Enum):
 class ChangeProposal(BaseModel):
     """Structured proposal for system updates after review."""
     model_config = ConfigDict(protected_namespaces=())
-    prompt_updates: Optional[Dict[str, str]] = Field(default_factory=dict, description="Prompt edits by component")
+    prompt_updates: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Prompt edits by component")
     threshold_updates: Optional[Dict[str, float]] = Field(default_factory=dict, description="Threshold adjustments")
     weighting_updates: Optional[Dict[str, float]] = Field(default_factory=dict, description="Retrieval/source weight changes")
     rationale: Optional[str] = Field(None, description="Reason for change proposal")
