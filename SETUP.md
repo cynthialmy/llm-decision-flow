@@ -83,6 +83,24 @@ AZURE_OPENAI_API_KEY=your-api-key-here
 AZURE_ENV_NAME=your-env-name
 AZURE_LOCATION=your-location
 AZURE_SUBSCRIPTION_ID=your-subscription-id
+
+# SLM + Search Providers (optional but recommended for optimized routing)
+GROQ_API_KEY=your-groq-key
+ZENTROPI_API_KEY=your-zentropi-key
+ZENTROPI_LABELER_ID=your-labeler-id
+ZENTROPI_LABELER_VERSION_ID=your-labeler-version-id
+SERPER_API_KEY=your-serper-key
+
+# Optional policy + routing controls
+POLICY_VERSION=1.0
+CLAIM_CONFIDENCE_THRESHOLD=0.65
+RISK_CONFIDENCE_THRESHOLD=0.6
+POLICY_CONFIDENCE_THRESHOLD=0.7
+NOVELTY_SIMILARITY_THRESHOLD=0.35
+EVIDENCE_SIMILARITY_CUTOFF=0.4
+
+# External search allowlist (comma-separated domains)
+EXTERNAL_SEARCH_ALLOWLIST=gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com
 ```
 
 **How It Works**:
@@ -116,6 +134,22 @@ AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
 
 # API Version
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
+# Optional SLM + Search Providers
+GROQ_API_KEY=your-groq-key
+ZENTROPI_API_KEY=your-zentropi-key
+ZENTROPI_LABELER_ID=your-labeler-id
+ZENTROPI_LABELER_VERSION_ID=your-labeler-version-id
+SERPER_API_KEY=your-serper-key
+
+# Optional policy + routing controls
+POLICY_VERSION=1.0
+CLAIM_CONFIDENCE_THRESHOLD=0.65
+RISK_CONFIDENCE_THRESHOLD=0.6
+POLICY_CONFIDENCE_THRESHOLD=0.7
+NOVELTY_SIMILARITY_THRESHOLD=0.35
+EVIDENCE_SIMILARITY_CUTOFF=0.4
+EXTERNAL_SEARCH_ALLOWLIST=gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com
 ```
 
 **Note**: When using API keys, use the base endpoint format (without `/api/projects/`).

@@ -1,5 +1,7 @@
 """Vector store wrapper for ChromaDB with Azure OpenAI embeddings."""
 import os
+import hashlib
+import shelve
 import chromadb
 from chromadb.config import Settings
 from typing import List, Dict, Optional
@@ -45,6 +47,10 @@ class VectorStore:
         import logging
         logger = logging.getLogger(__name__)
 
+        cached = self._get_cached_embedding(text)
+        if cached is not None:
+            return cached
+
         # Try with current client first
         try:
             logger.debug(f"Generating embedding with deployment: {self.embedding_deployment}")
@@ -56,7 +62,9 @@ class VectorStore:
                 model=self.embedding_deployment,
                 input=text
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            self._set_cached_embedding(text, embedding)
+            return embedding
         except Exception as e:
             error_msg = str(e)
             endpoint = getattr(self.embedding_client, '_azure_endpoint', None) or getattr(self.embedding_client, 'azure_endpoint', 'unknown')
@@ -129,7 +137,9 @@ class VectorStore:
                             # Success! Update the client for future use
                             logger.info(f"✅ Successfully connected to {alt_endpoint}, updating client")
                             self.embedding_client = alt_client
-                            return response.data[0].embedding
+                            embedding = response.data[0].embedding
+                            self._set_cached_embedding(text, embedding)
+                            return embedding
 
                         except Exception as alt_error:
                             error_str = str(alt_error)
@@ -183,6 +193,53 @@ class VectorStore:
                 logger.error(f"Embedding error - Deployment: {self.embedding_deployment}, Endpoint: {endpoint_str}, Error: {e}")
                 raise ValueError(f"Error generating embedding: {e}")
 
+    def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
+        embeddings: List[List[float]] = []
+        missing_texts: List[str] = []
+        missing_indices: List[int] = []
+
+        for idx, text in enumerate(texts):
+            cached = self._get_cached_embedding(text)
+            if cached is not None:
+                embeddings.append(cached)
+            else:
+                embeddings.append([])
+                missing_texts.append(text)
+                missing_indices.append(idx)
+
+        if missing_texts:
+            response = self.embedding_client.embeddings.create(
+                model=self.embedding_deployment,
+                input=missing_texts
+            )
+            for i, emb in enumerate(response.data):
+                index = missing_indices[i]
+                embeddings[index] = emb.embedding
+                self._set_cached_embedding(missing_texts[i], emb.embedding)
+
+        return embeddings
+
+    def _embedding_cache_path(self) -> str:
+        return os.path.join(os.path.dirname(settings.chroma_db_path) or ".", "embedding_cache")
+
+    def _get_cached_embedding(self, text: str) -> Optional[List[float]]:
+        cache_path = self._embedding_cache_path()
+        key = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        try:
+            with shelve.open(cache_path) as cache:
+                return cache.get(key)
+        except Exception:
+            return None
+
+    def _set_cached_embedding(self, text: str, embedding: List[float]) -> None:
+        cache_path = self._embedding_cache_path()
+        key = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        try:
+            with shelve.open(cache_path) as cache:
+                cache[key] = embedding
+        except Exception:
+            return
+
     def add_documents(
         self,
         documents: List[str],
@@ -200,8 +257,11 @@ class VectorStore:
         if not documents:
             return
 
-        # Generate embeddings
-        embeddings = [self._get_embedding(doc) for doc in documents]
+        if not settings.allow_runtime_indexing:
+            raise ValueError("Runtime indexing is disabled. Set ALLOW_RUNTIME_INDEXING=true to enable.")
+
+        # Generate embeddings (batch + cache)
+        embeddings = self._get_embeddings(documents)
 
         # Generate IDs if not provided
         if ids is None:
@@ -209,7 +269,10 @@ class VectorStore:
 
         # Default metadata if not provided
         if metadatas is None:
-            metadatas = [{}] * len(documents)
+            metadatas = [{"index_version": settings.evidence_index_version} for _ in documents]
+        else:
+            for metadata in metadatas:
+                metadata.setdefault("index_version", settings.evidence_index_version)
 
         # Add to collection
         self.collection.add(
@@ -258,6 +321,16 @@ class VectorStore:
                 })
 
         return formatted_results
+
+    def max_similarity(self, query: str, index_version: Optional[str] = None) -> Optional[float]:
+        where = {"index_version": index_version} if index_version else None
+        results = self.search(query, n_results=1, where=where)
+        if not results:
+            return None
+        distance = results[0].get("distance")
+        if distance is None:
+            return None
+        return 1.0 - distance
 
     def get_all_documents(self) -> List[Dict]:
         """Get all documents from the collection."""

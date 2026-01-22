@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from src.models.database import DecisionRecord, ReviewRecord, MetricsSnapshot, SessionLocal
+from src.config import settings
 from src.models.schemas import RiskTier, DecisionAction
 
 
@@ -93,7 +94,11 @@ class MetricsCalculator:
             "total_decisions": total_decisions,
             "total_reviews": total_reviews,
             "reversals": reversals,
-            "period_days": days
+            "period_days": days,
+            "rollback_recommended": (
+                model_human_disagreement >= settings.disagreement_rollback_threshold
+                or avg_time_to_decision >= settings.latency_rollback_threshold_s
+            )
         }
 
     def _empty_metrics(self) -> Dict[str, Any]:
@@ -107,7 +112,8 @@ class MetricsCalculator:
             "total_decisions": 0,
             "total_reviews": 0,
             "reversals": 0,
-            "period_days": 7
+            "period_days": 7,
+            "rollback_recommended": False
         }
 
     def save_snapshot(self, metrics: Dict[str, Any]) -> int:
@@ -129,7 +135,8 @@ class MetricsCalculator:
             additional_metrics={
                 "total_decisions": metrics.get("total_decisions"),
                 "total_reviews": metrics.get("total_reviews"),
-                "reversals": metrics.get("reversals")
+                "reversals": metrics.get("reversals"),
+                "rollback_recommended": metrics.get("rollback_recommended")
             }
         )
 

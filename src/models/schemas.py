@@ -54,9 +54,12 @@ class RiskAssessment(BaseModel):
     """Risk assessment result."""
     tier: RiskTier = Field(..., description="Risk tier")
     reasoning: str = Field(..., description="Reasoning for risk assessment")
+    confidence: float = Field(0.0, ge=0.0, le=1.0, description="Risk confidence")
     potential_harm: str = Field(..., description="Description of potential harm")
     estimated_exposure: str = Field(..., description="Estimated exposure level")
     vulnerable_populations: List[str] = Field(default_factory=list, description="Affected vulnerable populations")
+    route_reason: Optional[str] = Field(None, description="Routing reason or fallback explanation")
+    model_used: Optional[str] = Field(None, description="Model or labeler used")
 
 
 class EvidenceItem(BaseModel):
@@ -72,6 +75,7 @@ class Evidence(BaseModel):
     """Evidence retrieval result."""
     supporting: List[EvidenceItem] = Field(default_factory=list, description="Supporting evidence")
     contradicting: List[EvidenceItem] = Field(default_factory=list, description="Contradicting evidence")
+    contextual: List[EvidenceItem] = Field(default_factory=list, description="Context-only external evidence")
     evidence_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Overall evidence confidence")
     conflicts_present: bool = Field(False, description="Whether conflicting evidence exists")
 
@@ -92,6 +96,9 @@ class PolicyInterpretation(BaseModel):
     policy_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Policy interpretation confidence")
     allowed_contexts: List[str] = Field(default_factory=list, description="Allowed contexts (e.g., satire, personal experience)")
     reasoning: str = Field(..., description="Reasoning for policy interpretation")
+    conflict_detected: bool = Field(False, description="Whether cross-policy conflicts detected")
+    model_used: Optional[str] = Field(None, description="Model or labeler used")
+    route_reason: Optional[str] = Field(None, description="Routing reason or fallback explanation")
 
 
 class Decision(BaseModel):
@@ -109,6 +116,13 @@ class AgentExecutionDetail(BaseModel):
     agent_type: str = Field(..., description="Agent type identifier")
     system_prompt: str = Field(..., description="System prompt used")
     user_prompt: str = Field(..., description="User prompt used")
+    model_name: Optional[str] = Field(None, description="Model or labeler name")
+    model_provider: Optional[str] = Field(None, description="Provider name")
+    prompt_hash: Optional[str] = Field(None, description="Hash of system + user prompt")
+    confidence: Optional[float] = Field(None, description="Primary confidence score")
+    route_reason: Optional[str] = Field(None, description="Routing reason or fallback explanation")
+    fallback_used: bool = Field(False, description="Whether fallback model was used")
+    policy_version: Optional[str] = Field(None, description="Policy version in effect")
     execution_time_ms: Optional[float] = Field(None, description="Execution time in ms")
     status: str = Field("completed", description="Execution status")
     error: Optional[str] = Field(None, description="Error message if failed")
@@ -128,6 +142,7 @@ class ReviewRequest(BaseModel):
     reviewed_at: Optional[datetime] = Field(None, description="Review timestamp")
     human_decision: Optional[Decision] = Field(None, description="Human reviewer's decision")
     human_rationale: Optional[str] = Field(None, description="Human reviewer's rationale")
+    reviewer_feedback: Optional[Dict[str, Any]] = Field(None, description="Structured reviewer feedback")
 
 
 class AnalysisRequest(BaseModel):
@@ -151,3 +166,4 @@ class HumanDecisionRequest(BaseModel):
     """Request to submit human decision."""
     decision: Decision = Field(..., description="Human decision")
     rationale: str = Field(..., description="Human reviewer's rationale")
+    reviewer_feedback: Optional[Dict[str, Any]] = Field(None, description="Structured reviewer feedback")

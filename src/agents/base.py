@@ -4,6 +4,7 @@ from typing import TypeVar, Type, Optional, Dict, Any, Tuple
 import time
 import json
 import logging
+import hashlib
 from openai import AzureOpenAI
 from pydantic import BaseModel, ValidationError
 from src.config import get_azure_openai_client, settings, get_foundry_project_client, get_foundry_agent_name
@@ -98,7 +99,8 @@ class BaseAgent(ABC):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                response_format=response_format
+                response_format=response_format,
+                timeout=settings.frontier_timeout_s
             )
             return response.choices[0].message.content or ""
         except Exception as e:
@@ -275,3 +277,8 @@ class BaseAgent(ABC):
     def process(self, *args, **kwargs):
         """Process input and return agent output. Must be implemented by subclasses."""
         pass
+
+    @staticmethod
+    def _prompt_hash(system_prompt: str, user_prompt: str) -> str:
+        raw = f"{system_prompt}\n\n{user_prompt}".encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()

@@ -5,9 +5,12 @@ from src.agents.risk_agent import RiskAgent
 from src.agents.evidence_agent import EvidenceAgent
 from src.agents.factuality_agent import FactualityAgent
 from src.agents.policy_agent import PolicyAgent
+from src.config import settings
+from src.rag.external_search import ExternalSearchClient
+from src.rag.vector_store import VectorStore
 from src.models.schemas import (
     Decision, DecisionAction, RiskTier, AnalysisResponse,
-    Claim, RiskAssessment, Evidence, FactualityAssessment, PolicyInterpretation,
+    Claim, RiskAssessment, Evidence, FactualityAssessment, PolicyInterpretation, EvidenceItem,
     AgentExecutionDetail
 )
 
@@ -38,6 +41,7 @@ class DecisionOrchestrator:
         # Step 1: Extract claims
         claims, claim_detail = self.claim_agent.process(transcript)
         agent_executions.append(claim_detail)
+        claim_confidence = claim_detail.confidence or 0.0
 
         # Step 2: Assess risk
         risk_assessment, risk_detail = self.risk_agent.process(transcript, claims)
@@ -47,11 +51,18 @@ class DecisionOrchestrator:
         evidence: Optional[Evidence] = None
         factuality_assessments: list[FactualityAssessment] = []
         policy_interpretation: Optional[PolicyInterpretation] = None
+        risk_confident = risk_assessment.confidence >= settings.risk_confidence_threshold
 
-        if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
+        if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and risk_confident:
             # Step 3a: Retrieve evidence (only for medium/high risk)
             evidence, evidence_detail = self.evidence_agent.process(claims)
             agent_executions.append(evidence_detail)
+
+            # Step 3b: External search for high-risk + high-novelty
+            if risk_assessment.tier == RiskTier.HIGH:
+                novelty_score = self._max_claim_similarity(claims)
+                if novelty_score < settings.novelty_similarity_threshold:
+                    evidence = self._attach_external_context(evidence, claims)
 
             # Step 4: Assess factuality
             factuality_assessments, factuality_detail = self.factuality_agent.process(claims, evidence)
@@ -70,7 +81,7 @@ class DecisionOrchestrator:
                 agent_name="Evidence Agent",
                 agent_type="evidence",
                 system_prompt="",
-                user_prompt="Skipped due to low risk routing decision.",
+                user_prompt="Skipped due to low risk or low confidence routing decision.",
                 execution_time_ms=None,
                 status="skipped"
             )
@@ -78,7 +89,7 @@ class DecisionOrchestrator:
                 agent_name="Factuality Agent",
                 agent_type="factuality",
                 system_prompt="",
-                user_prompt="Skipped due to low risk routing decision.",
+                user_prompt="Skipped due to low risk or low confidence routing decision.",
                 execution_time_ms=None,
                 status="skipped"
             )
@@ -103,7 +114,8 @@ class DecisionOrchestrator:
             risk_assessment,
             policy_interpretation,
             evidence,
-            decision
+            decision,
+            claim_confidence
         )
 
         return AnalysisResponse(
@@ -188,7 +200,8 @@ class DecisionOrchestrator:
         risk_assessment: RiskAssessment,
         policy_interpretation: Optional[PolicyInterpretation],
         evidence: Optional[Evidence],
-        decision: Decision
+        decision: Decision,
+        claim_confidence: float
     ) -> bool:
         """
         Determine if human review is required based on escalation criteria.
@@ -198,13 +211,14 @@ class DecisionOrchestrator:
         - Conflicting evidence
         - Sensitive domains (elections, health)
         - Decision action requires it
+        - Low confidence from upstream agents
         """
         # Decision already requires review
         if decision.requires_human_review:
             return True
 
         # Conflicting evidence
-        if evidence and evidence.conflicts_present:
+        if evidence and evidence.conflicts_present and risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
             return True
 
         # Sensitive domains (health, civic)
@@ -212,10 +226,57 @@ class DecisionOrchestrator:
         # This would need claims passed in, but for now we check risk assessment
         # In practice, you'd check claim domains
 
+        # Low confidence gates (only for high-impact content)
+        if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
+            if claim_confidence < settings.claim_confidence_threshold:
+                return True
+
+            if risk_assessment.confidence < settings.risk_confidence_threshold:
+                return True
+
         # High risk + low confidence
         if (risk_assessment.tier == RiskTier.HIGH and
             policy_interpretation and
-            policy_interpretation.policy_confidence < 0.6):
+            policy_interpretation.policy_confidence < settings.policy_confidence_threshold):
+            return True
+
+        if (risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and
+            policy_interpretation and
+            policy_interpretation.conflict_detected):
             return True
 
         return False
+
+    @staticmethod
+    def _max_claim_similarity(claims: list[Claim]) -> float:
+        if not claims:
+            return 0.0
+        vector_store = VectorStore()
+        max_similarity = 0.0
+        for claim in claims:
+            score = vector_store.max_similarity(claim.text, index_version=settings.evidence_index_version)
+            if score is not None:
+                max_similarity = max(max_similarity, score)
+        return max_similarity
+
+    @staticmethod
+    def _attach_external_context(evidence: Optional[Evidence], claims: list[Claim]) -> Evidence:
+        if evidence is None:
+            evidence = Evidence(supporting=[], contradicting=[], contextual=[], evidence_confidence=0.0, conflicts_present=False)
+        search_client = ExternalSearchClient()
+        contextual_items = []
+        for claim in claims[:3]:
+            results = search_client.search(claim.text)
+            for result in results:
+                text = result.get("snippet") or result.get("title") or "Context snippet unavailable."
+                contextual_items.append({
+                    "text": text,
+                    "source": result.get("source") or "external",
+                    "source_quality": "context",
+                    "timestamp": None,
+                    "relevance_score": 0.0,
+                })
+
+        for item in contextual_items:
+            evidence.contextual.append(EvidenceItem(**item))
+        return evidence

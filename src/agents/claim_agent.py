@@ -1,8 +1,11 @@
 """Claim Agent: Extracts factual claims and tags domains."""
 from typing import List, Tuple
 from pydantic import BaseModel
+import time
 from src.agents.base import BaseAgent
 from src.models.schemas import Claim, Domain, AgentExecutionDetail
+from src.llm.groq_client import GroqClient
+from src.config import settings
 
 
 class ClaimAgent(BaseAgent):
@@ -54,20 +57,35 @@ Return the claims as a JSON object with this structure:
         class ClaimResponse(BaseModel):
             claims: List[Claim]
 
-        response, elapsed_ms = self._call_llm_structured_with_timing(
+        groq = GroqClient()
+        start_time = time.perf_counter()
+        response_data = groq.chat(
             prompt=user_prompt,
             system_prompt=system_prompt,
-            output_model=ClaimResponse,
-            temperature=0.2  # Low temperature for consistent extraction
+            temperature=0.2,
+            max_tokens=settings.claim_max_tokens
         )
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        response = self._parse_structured_output(response_data["content"], ClaimResponse)
 
         detail = AgentExecutionDetail(
             agent_name="Claim Agent",
             agent_type="claim",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
+            model_name=response_data.get("model"),
+            model_provider="groq",
+            prompt_hash=response_data.get("prompt_hash"),
+            confidence=self._aggregate_claim_confidence(response.claims),
             execution_time_ms=elapsed_ms,
-            status="completed"
+            status="completed",
+            policy_version=settings.policy_version
         )
 
         return response.claims, detail
+
+    @staticmethod
+    def _aggregate_claim_confidence(claims: List[Claim]) -> float:
+        if not claims:
+            return 0.0
+        return sum([claim.confidence for claim in claims]) / len(claims)

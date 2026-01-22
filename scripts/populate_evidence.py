@@ -7,11 +7,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.rag.vector_store import VectorStore
+from src.config import settings
 from datetime import datetime
 
 
 def populate_evidence():
     """Populate vector store with evidence documents."""
+    settings.allow_runtime_indexing = True
     vector_store = VectorStore()
 
     # Evidence documents directory
@@ -42,7 +44,8 @@ def populate_evidence():
                     "source": file_path.name,
                     "domain": domain,
                     "quality": "high",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
+                    "index_version": settings.evidence_index_version
                 })
                 ids.append(file_path.stem)
 

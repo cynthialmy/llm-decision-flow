@@ -28,6 +28,7 @@ class DecisionRecord(Base):
     evidence_json = Column(JSON, nullable=True)
     factuality_assessments_json = Column(JSON, nullable=True)
     policy_interpretation_json = Column(JSON, nullable=True)
+    agent_executions_json = Column(JSON, nullable=True)
 
     # Governance fields
     policy_version = Column(String, nullable=True)
@@ -50,6 +51,7 @@ class ReviewRecord(Base):
     human_decision_action = Column(String, nullable=True)
     human_decision_rationale = Column(Text, nullable=True)
     human_rationale = Column(Text, nullable=True)
+    reviewer_feedback_json = Column(JSON, nullable=True)
 
     # Status
     status = Column(String, default="pending")  # pending, reviewed, resolved
@@ -93,10 +95,29 @@ def get_engine():
     return create_engine(database_url, connect_args={"check_same_thread": False})
 
 
+def _ensure_schema(engine):
+    """Ensure new columns exist for auditability."""
+    import sqlalchemy
+
+    def _has_column(table: str, column: str) -> bool:
+        with engine.connect() as conn:
+            result = conn.execute(sqlalchemy.text(f"PRAGMA table_info({table})"))
+            columns = [row[1] for row in result.fetchall()]
+            return column in columns
+
+    with engine.connect() as conn:
+        if not _has_column("decisions", "agent_executions_json"):
+            conn.execute(sqlalchemy.text("ALTER TABLE decisions ADD COLUMN agent_executions_json JSON"))
+        if not _has_column("reviews", "reviewer_feedback_json"):
+            conn.execute(sqlalchemy.text("ALTER TABLE reviews ADD COLUMN reviewer_feedback_json JSON"))
+        conn.commit()
+
+
 def get_session_local():
     """Create database session factory."""
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+    _ensure_schema(engine)
     return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

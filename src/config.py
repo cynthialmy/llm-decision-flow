@@ -50,6 +50,41 @@ class Settings(BaseSettings):
     # Policy Configuration
     policy_file_path: str = "./policies/misinformation_policy.txt"
 
+    # External Providers
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama-3.3-70b-versatile"
+    zentropi_api_key: Optional[str] = None
+    zentropi_labeler_id: Optional[str] = None
+    zentropi_labeler_version_id: Optional[str] = None
+    serper_api_key: Optional[str] = None
+
+    # Routing + Confidence Thresholds
+    claim_confidence_threshold: float = 0.65
+    risk_confidence_threshold: float = 0.6
+    policy_confidence_threshold: float = 0.7
+    novelty_similarity_threshold: float = 0.35
+    evidence_similarity_cutoff: float = 0.4
+
+    # Token + Latency Budgets
+    slm_max_tokens: int = 800
+    frontier_max_tokens: int = 2000
+    claim_max_tokens: int = 900
+    slm_timeout_s: float = 2.5
+    frontier_timeout_s: float = 6.0
+
+    # Evidence Indexing
+    allow_runtime_indexing: bool = False
+    evidence_index_version: str = "v1"
+
+    # External Search Controls
+    allow_external_search: bool = True
+    external_search_allowlist: str = "gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com"
+
+    # Governance + Quality Gates
+    policy_version: str = "1.0"
+    disagreement_rollback_threshold: float = 0.2
+    latency_rollback_threshold_s: float = 10.0
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

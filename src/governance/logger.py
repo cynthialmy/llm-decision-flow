@@ -4,6 +4,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from src.models.database import DecisionRecord, ReviewRecord, SessionLocal
 from src.models.schemas import AnalysisResponse, Decision, ReviewRequest
+from src.config import settings
 import json
 
 
@@ -17,7 +18,7 @@ class GovernanceLogger:
         Args:
             policy_version: Current policy version identifier
         """
-        self.policy_version = policy_version or "1.0"
+        self.policy_version = policy_version or settings.policy_version
         self.db: Session = SessionLocal()
 
     def log_decision(self, analysis_response: AnalysisResponse, transcript: str) -> int:
@@ -38,6 +39,8 @@ class GovernanceLogger:
         factuality_json = [fa.dict() for fa in analysis_response.factuality_assessments] if analysis_response.factuality_assessments else None
         policy_json = analysis_response.policy_interpretation.dict() if analysis_response.policy_interpretation else None
 
+        agent_executions_json = [detail.dict() for detail in analysis_response.agent_executions]
+
         decision_record = DecisionRecord(
             transcript=transcript,
             decision_action=analysis_response.decision.action.value,
@@ -50,6 +53,7 @@ class GovernanceLogger:
             evidence_json=evidence_json,
             factuality_assessments_json=factuality_json,
             policy_interpretation_json=policy_json,
+            agent_executions_json=agent_executions_json,
             policy_version=self.policy_version,
             decision_version=1
         )
@@ -131,7 +135,8 @@ class GovernanceLogger:
             created_at=review_record.created_at,
             reviewed_at=review_record.reviewed_at,
             human_decision=human_decision,
-            human_rationale=review_record.human_rationale
+            human_rationale=review_record.human_rationale,
+            reviewer_feedback=review_record.reviewer_feedback_json
         )
 
     def list_pending_reviews(self) -> list[ReviewRequest]:
@@ -150,7 +155,8 @@ class GovernanceLogger:
         self,
         review_id: int,
         human_decision: Decision,
-        human_rationale: str
+        human_rationale: str,
+        reviewer_feedback: Optional[dict] = None
     ) -> bool:
         """
         Submit human decision for a review.
@@ -170,6 +176,8 @@ class GovernanceLogger:
         review_record.human_decision_action = human_decision.action.value
         review_record.human_decision_rationale = human_decision.rationale
         review_record.human_rationale = human_rationale
+        if reviewer_feedback is not None:
+            review_record.reviewer_feedback_json = reviewer_feedback
         review_record.status = "reviewed"
         review_record.reviewed_at = datetime.utcnow()
 

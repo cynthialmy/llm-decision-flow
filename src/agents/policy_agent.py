@@ -1,9 +1,11 @@
 """Policy Interpretation Agent: Interprets policy text and determines violations."""
 import os
-from typing import Tuple
+import time
+from typing import Tuple, Optional
 from src.agents.base import BaseAgent
 from src.models.schemas import PolicyInterpretation, ViolationStatus, Claim, FactualityAssessment, RiskAssessment, AgentExecutionDetail
 from src.config import settings
+from src.llm.zentropi_client import ZentropiClient
 
 
 class PolicyAgent(BaseAgent):
@@ -78,7 +80,8 @@ Return a JSON object with:
 - "violation_type": type of violation if applicable (null if no violation)
 - "policy_confidence": float between 0.0 and 1.0
 - "allowed_contexts": array of allowed contexts (e.g., ["satire", "personal experience"])
-- "reasoning": detailed reasoning for interpretation"""
+- "reasoning": detailed reasoning for interpretation
+- "conflict_detected": boolean indicating cross-policy conflict"""
 
         # Format inputs
         claims_text = "\n".join([f"- {claim.text} ({claim.domain.value})" for claim in claims])
@@ -109,23 +112,86 @@ Return a JSON object with this structure:
   "violation_type": "violation type or null",
   "policy_confidence": 0.85,
   "allowed_contexts": ["satire", "personal experience"],
-  "reasoning": "detailed reasoning"
+  "reasoning": "detailed reasoning",
+  "conflict_detected": false
 }}"""
 
-        response, elapsed_ms = self._call_llm_structured_with_timing(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            output_model=PolicyInterpretation,
-            temperature=0.3
-        )
+        start_time = time.perf_counter()
+        zentropi = ZentropiClient()
+        slm_result: Optional[PolicyInterpretation] = None
+        fallback_used = False
+        route_reason = "slm_primary"
+
+        if zentropi.is_configured():
+            try:
+                content = f"{claims_text}\n\nFactuality:\n{factuality_text}\n\nRisk:{risk_assessment.tier.value}"
+                slm_response = zentropi.label(content)
+                violation = self._map_label_to_violation(slm_response.label)
+                if violation:
+                    slm_result = PolicyInterpretation(
+                        violation=violation,
+                        violation_type=None,
+                        policy_confidence=slm_response.confidence,
+                        allowed_contexts=[],
+                        reasoning=str(slm_response.raw.get("reasoning") or "SLM policy label output."),
+                        conflict_detected=False,
+                        model_used="zentropi",
+                        route_reason="slm_primary"
+                    )
+            except Exception:
+                slm_result = None
+
+        if slm_result is None or slm_result.policy_confidence < settings.policy_confidence_threshold:
+            fallback_used = True
+            route_reason = "fallback_frontier"
+            response = self._call_llm_structured(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                output_model=PolicyInterpretation,
+                temperature=0.3,
+                max_tokens=settings.frontier_max_tokens
+            )
+            response.route_reason = route_reason
+            response.model_used = settings.azure_openai_deployment_name
+        else:
+            response = slm_result
+
+        response.conflict_detected = self._detect_conflict(response)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
 
         detail = AgentExecutionDetail(
             agent_name="Policy Interpretation Agent",
             agent_type="policy",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
+            model_name=response.model_used,
+            model_provider="zentropi" if response.model_used == "zentropi" else "azure_openai",
+            prompt_hash=self._prompt_hash(system_prompt, user_prompt),
+            confidence=response.policy_confidence,
+            route_reason=response.route_reason,
+            fallback_used=fallback_used,
+            policy_version=settings.policy_version,
             execution_time_ms=elapsed_ms,
             status="completed"
         )
 
         return response, detail
+
+    @staticmethod
+    def _map_label_to_violation(label: Optional[str]) -> Optional[ViolationStatus]:
+        if not label:
+            return None
+        normalized = label.strip().lower()
+        if "context" in normalized:
+            return ViolationStatus.CONTEXTUAL
+        if "yes" in normalized or "violate" in normalized:
+            return ViolationStatus.YES
+        if "no" in normalized:
+            return ViolationStatus.NO
+        return None
+
+    @staticmethod
+    def _detect_conflict(result: PolicyInterpretation) -> bool:
+        if result.violation == ViolationStatus.YES and result.allowed_contexts:
+            return True
+        return False

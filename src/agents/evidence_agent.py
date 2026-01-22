@@ -5,6 +5,7 @@ from src.agents.base import BaseAgent
 from src.models.schemas import Evidence, Claim, AgentExecutionDetail
 from src.rag.evidence_retriever import EvidenceRetriever
 from src.rag.vector_store import VectorStore
+from src.config import settings
 
 
 class EvidenceAgent(BaseAgent):
@@ -42,6 +43,13 @@ class EvidenceAgent(BaseAgent):
                 agent_type="evidence",
                 system_prompt="",
                 user_prompt="No claims provided; skipping retrieval.",
+                model_name="chroma",
+                model_provider="rag",
+                prompt_hash=None,
+                confidence=0.0,
+                route_reason="no_claims",
+                fallback_used=False,
+                policy_version=settings.policy_version,
                 execution_time_ms=elapsed_ms,
                 status="skipped"
             )
@@ -56,6 +64,13 @@ class EvidenceAgent(BaseAgent):
             agent_type="evidence",
             system_prompt="",
             user_prompt="Retrieve evidence for extracted claims.",
+            model_name="chroma",
+            model_provider="rag",
+            prompt_hash=None,
+            confidence=evidence.evidence_confidence,
+            route_reason="rag_retrieval",
+            fallback_used=False,
+            policy_version=settings.policy_version,
             execution_time_ms=elapsed_ms,
             status="completed"
         )

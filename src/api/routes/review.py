@@ -63,7 +63,8 @@ async def submit_human_decision(
         success = governance_logger.submit_human_decision(
             review_id,
             request.decision,
-            request.rationale
+            request.rationale,
+            request.reviewer_feedback
         )
         if not success:
             raise HTTPException(status_code=404, detail="Review request not found")

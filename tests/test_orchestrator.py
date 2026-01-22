@@ -13,8 +13,10 @@ class TestDecisionOrchestrator:
     @patch('src.orchestrator.decision_orchestrator.EvidenceAgent.process')
     @patch('src.orchestrator.decision_orchestrator.FactualityAgent.process')
     @patch('src.orchestrator.decision_orchestrator.PolicyAgent.process')
+    @patch('src.orchestrator.decision_orchestrator.DecisionOrchestrator._max_claim_similarity')
     def test_low_risk_fast_path(
         self,
+        mock_similarity,
         mock_policy,
         mock_factuality,
         mock_evidence,
@@ -29,10 +31,12 @@ class TestDecisionOrchestrator:
             [Claim(text="Low risk claim", domain=Domain.OTHER, is_explicit=True, confidence=0.8)],
             AgentExecutionDetail(agent_name="Claim Agent", agent_type="claim", system_prompt="", user_prompt="")
         )
+        mock_similarity.return_value = 1.0
         mock_risk.return_value = (
             RiskAssessment(
             tier=RiskTier.LOW,
             reasoning="Low risk",
+            confidence=0.8,
             potential_harm="Minimal",
             estimated_exposure="Limited",
             vulnerable_populations=[]
@@ -44,7 +48,8 @@ class TestDecisionOrchestrator:
                 violation=ViolationStatus.NO,
                 policy_confidence=0.8,
                 allowed_contexts=[],
-                reasoning="No violation"
+                reasoning="No violation",
+                conflict_detected=False
             ),
             AgentExecutionDetail(agent_name="Policy Agent", agent_type="policy", system_prompt="", user_prompt="")
         )
@@ -65,8 +70,10 @@ class TestDecisionOrchestrator:
     @patch('src.orchestrator.decision_orchestrator.EvidenceAgent.process')
     @patch('src.orchestrator.decision_orchestrator.FactualityAgent.process')
     @patch('src.orchestrator.decision_orchestrator.PolicyAgent.process')
+    @patch('src.orchestrator.decision_orchestrator.DecisionOrchestrator._max_claim_similarity')
     def test_high_risk_full_pipeline(
         self,
+        mock_similarity,
         mock_policy,
         mock_factuality,
         mock_evidence,
@@ -80,6 +87,7 @@ class TestDecisionOrchestrator:
         )
 
         # Mock agents
+        mock_similarity.return_value = 1.0
         mock_claim.return_value = (
             [Claim(text="High risk claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.9)],
             AgentExecutionDetail(agent_name="Claim Agent", agent_type="claim", system_prompt="", user_prompt="")
@@ -88,6 +96,7 @@ class TestDecisionOrchestrator:
             RiskAssessment(
             tier=RiskTier.HIGH,
             reasoning="High risk",
+            confidence=0.8,
             potential_harm="Severe",
             estimated_exposure="Wide",
             vulnerable_populations=["elderly"]
@@ -98,6 +107,7 @@ class TestDecisionOrchestrator:
             Evidence(
                 supporting=[],
                 contradicting=[],
+                contextual=[],
                 evidence_confidence=0.5,
                 conflicts_present=False
             ),
@@ -121,7 +131,8 @@ class TestDecisionOrchestrator:
                 violation_type="Health misinformation",
                 policy_confidence=0.9,
                 allowed_contexts=[],
-                reasoning="Violates policy"
+                reasoning="Violates policy",
+                conflict_detected=False
             ),
             AgentExecutionDetail(agent_name="Policy Agent", agent_type="policy", system_prompt="", user_prompt="")
         )
@@ -138,3 +149,52 @@ class TestDecisionOrchestrator:
         assert result.risk_assessment.tier == RiskTier.HIGH
         assert result.evidence is not None
         assert len(result.factuality_assessments) > 0
+
+    @patch('src.orchestrator.decision_orchestrator.ClaimAgent.process')
+    @patch('src.orchestrator.decision_orchestrator.RiskAgent.process')
+    @patch('src.orchestrator.decision_orchestrator.EvidenceAgent.process')
+    @patch('src.orchestrator.decision_orchestrator.FactualityAgent.process')
+    @patch('src.orchestrator.decision_orchestrator.PolicyAgent.process')
+    def test_risk_low_confidence_skips_rag(
+        self,
+        mock_policy,
+        mock_factuality,
+        mock_evidence,
+        mock_risk,
+        mock_claim
+    ):
+        """Low risk confidence should skip RAG even for high tier."""
+        from src.models.schemas import Claim, Domain, RiskAssessment, PolicyInterpretation, ViolationStatus, AgentExecutionDetail
+
+        mock_claim.return_value = (
+            [Claim(text="Claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.9)],
+            AgentExecutionDetail(agent_name="Claim Agent", agent_type="claim", system_prompt="", user_prompt="")
+        )
+        mock_risk.return_value = (
+            RiskAssessment(
+                tier=RiskTier.HIGH,
+                reasoning="High risk but low confidence",
+                confidence=0.4,
+                potential_harm="Severe",
+                estimated_exposure="Wide",
+                vulnerable_populations=["elderly"]
+            ),
+            AgentExecutionDetail(agent_name="Risk Agent", agent_type="risk", system_prompt="", user_prompt="")
+        )
+        mock_policy.return_value = (
+            PolicyInterpretation(
+                violation=ViolationStatus.NO,
+                policy_confidence=0.7,
+                allowed_contexts=[],
+                reasoning="No violation",
+                conflict_detected=False
+            ),
+            AgentExecutionDetail(agent_name="Policy Agent", agent_type="policy", system_prompt="", user_prompt="")
+        )
+
+        orchestrator = DecisionOrchestrator()
+        result = orchestrator.analyze("High risk content")
+
+        mock_evidence.assert_not_called()
+        mock_factuality.assert_not_called()
+        assert result.risk_assessment.confidence < 0.6

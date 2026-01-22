@@ -9,8 +9,8 @@ from src.models.schemas import Claim, Domain, RiskAssessment, RiskTier
 class TestClaimAgent:
     """Tests for Claim Agent."""
 
-    @patch('src.agents.claim_agent.ClaimAgent._call_llm_structured_with_timing')
-    def test_extract_claims(self, mock_llm):
+    @patch('src.agents.claim_agent.GroqClient')
+    def test_extract_claims(self, mock_groq):
         """Test claim extraction."""
         # Mock LLM response
         mock_response = Mock()
@@ -22,7 +22,12 @@ class TestClaimAgent:
                 confidence=0.9
             )
         ]
-        mock_llm.return_value = (mock_response, 5.0)
+        mock_groq_instance = mock_groq.return_value
+        mock_groq_instance.chat.return_value = {
+            "content": '{"claims":[{"text":"COVID vaccines are safe","domain":"health","is_explicit":true,"confidence":0.9}]}',
+            "model": "llama",
+            "prompt_hash": "hash"
+        }
 
         agent = ClaimAgent()
         claims, detail = agent.process("COVID vaccines are safe and effective.")
@@ -30,24 +35,27 @@ class TestClaimAgent:
         assert len(claims) == 1
         assert claims[0].domain == Domain.HEALTH
         assert detail.agent_type == "claim"
-        mock_llm.assert_called_once()
+        mock_groq_instance.chat.assert_called_once()
 
 
 class TestRiskAgent:
     """Tests for Risk Agent."""
 
-    @patch('src.agents.risk_agent.RiskAgent._call_llm_structured_with_timing')
-    def test_assess_risk(self, mock_llm):
+    @patch('src.agents.risk_agent.RiskAgent._call_llm_structured')
+    @patch('src.agents.risk_agent.ZentropiClient')
+    def test_assess_risk(self, mock_zentropi, mock_llm):
         """Test risk assessment."""
         # Mock LLM response
         mock_response = RiskAssessment(
             tier=RiskTier.HIGH,
             reasoning="High potential harm",
+            confidence=0.7,
             potential_harm="Could cause physical harm",
             estimated_exposure="Wide exposure expected",
             vulnerable_populations=["elderly", "immunocompromised"]
         )
-        mock_llm.return_value = (mock_response, 5.0)
+        mock_llm.return_value = mock_response
+        mock_zentropi.return_value.is_configured.return_value = False
 
         agent = RiskAgent()
         claims = [Claim(text="Test claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.8)]
@@ -99,7 +107,7 @@ class TestFactualityAgent:
 
         agent = FactualityAgent()
         claims = [Claim(text="Test claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.8)]
-        evidence = Evidence(supporting=[], contradicting=[], evidence_confidence=0.5, conflicts_present=False)
+        evidence = Evidence(supporting=[], contradicting=[], contextual=[], evidence_confidence=0.5, conflicts_present=False)
 
         assessments, detail = agent.process(claims, evidence)
 
@@ -113,8 +121,9 @@ class TestPolicyAgent:
     """Tests for Policy Agent."""
 
     @patch('src.agents.policy_agent.PolicyAgent._load_policy')
-    @patch('src.agents.policy_agent.PolicyAgent._call_llm_structured_with_timing')
-    def test_interpret_policy(self, mock_llm, mock_load_policy):
+    @patch('src.agents.policy_agent.PolicyAgent._call_llm_structured')
+    @patch('src.agents.policy_agent.ZentropiClient')
+    def test_interpret_policy(self, mock_zentropi, mock_llm, mock_load_policy):
         """Test policy interpretation."""
         from src.agents.policy_agent import PolicyAgent
         from src.models.schemas import PolicyInterpretation, ViolationStatus, RiskAssessment, RiskTier
@@ -127,15 +136,18 @@ class TestPolicyAgent:
             violation_type="Health misinformation",
             policy_confidence=0.9,
             allowed_contexts=[],
-            reasoning="Violates health misinformation policy"
+            reasoning="Violates health misinformation policy",
+            conflict_detected=False
         )
-        mock_llm.return_value = (mock_response, 5.0)
+        mock_llm.return_value = mock_response
+        mock_zentropi.return_value.is_configured.return_value = False
 
         agent = PolicyAgent()
         claims = [Claim(text="Test claim", domain=Domain.HEALTH, is_explicit=True, confidence=0.8)]
         risk = RiskAssessment(
             tier=RiskTier.HIGH,
             reasoning="High risk",
+            confidence=0.8,
             potential_harm="Harmful",
             estimated_exposure="Wide",
             vulnerable_populations=[]

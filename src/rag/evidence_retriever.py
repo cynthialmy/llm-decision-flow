@@ -3,6 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 from src.rag.vector_store import VectorStore
 from src.models.schemas import Evidence, EvidenceItem, Claim
+from src.config import settings
 
 
 class EvidenceRetriever:
@@ -35,18 +36,23 @@ class EvidenceRetriever:
             # Search for evidence related to this claim
             search_results = self.vector_store.search(
                 query=claim.text,
-                n_results=n_results
+                n_results=n_results,
+                where={"index_version": settings.evidence_index_version} if settings.evidence_index_version else None
             )
 
             # Classify evidence as supporting or contradicting
             # This is a simplified approach - in production, you'd use a classifier
             for result in search_results:
+                relevance_score = 1.0 - (result['distance'] or 0.0)
+                if relevance_score < settings.evidence_similarity_cutoff:
+                    continue
+
                 evidence_item = EvidenceItem(
                     text=result['document'],
                     source=result['metadata'].get('source', 'unknown'),
                     source_quality=result['metadata'].get('quality', 'unknown'),
                     timestamp=self._parse_timestamp(result['metadata'].get('timestamp')),
-                    relevance_score=1.0 - (result['distance'] or 0.0)  # Convert distance to relevance
+                    relevance_score=relevance_score  # Convert distance to relevance
                 )
 
                 # Simple heuristic: if distance is low, it's likely supporting

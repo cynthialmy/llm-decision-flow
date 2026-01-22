@@ -1,6 +1,6 @@
 # LLM and Agent API Usage in Misinformation Claim Detection
 
-This document explains how various LLM and agent-related APIs are used in misinformation claim detection systems, with a focus on **Groq** (LLM inference) and **Serper** (search API).
+This document explains how various LLM and agent-related APIs are used in misinformation claim detection systems, with a focus on **Groq** (LLM inference), **Zentropi** (SLM classification), and **Serper** (search API).
 
 ---
 
@@ -125,7 +125,43 @@ def assess_risk(claim: str) -> dict:
 
 ---
 
-## 2. Serper API (Google Search)
+## 2. Zentropi API (SLM Classification)
+
+### What is Zentropi?
+Zentropi provides labeler-driven small language models (SLMs) that output compact labels and confidence scores for fast classification tasks.
+
+### Role in Misinformation Detection
+Zentropi is used for **fast, steerable classification**:
+1. **Risk Tiering**: Coarse risk level classification (Low/Medium/High)
+2. **Policy Interpretation**: Preliminary policy violation label
+3. **Confidence Gates**: Route low-confidence cases to frontier LLMs
+
+### General Usage Pattern
+```python
+import requests
+
+url = "https://api.zentropi.ai/v1/label"
+headers = {
+    "Authorization": "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json"
+}
+data = {
+    "content_text": "YOUR TEXT TO LABEL HERE",
+    "labeler_id": "YOUR_LABELER_ID",
+    "labeler_version_id": "YOUR_LABELER_VERSION_ID"
+}
+response = requests.post(url, headers=headers, json=data)
+print(response.json())
+```
+
+### Key Advantages of Zentropi
+- **Speed**: Low latency for high-volume classification
+- **Control**: Labelers can be tailored to policy/risk taxonomy
+- **Cost**: Lower cost per decision than full LLM prompts
+
+---
+
+## 3. Serper API (Google Search)
 
 ### What is Serper?
 
@@ -232,7 +268,7 @@ def comprehensive_evidence_search(claim: str) -> dict:
 
 ---
 
-## 3. Wikipedia API (Knowledge Base)
+## 4. Wikipedia API (Knowledge Base)
 
 ### What is Wikipedia API?
 
@@ -280,7 +316,7 @@ def create_wikipedia_tool():
 
 ---
 
-## 4. LangChain Agents (Orchestration)
+## 5. LangChain Agents (Orchestration)
 
 ### What are LangChain Agents?
 
@@ -336,7 +372,7 @@ def retrieve_evidence_with_agent(claim: str, agent):
 
 ---
 
-## 5. Complete Workflow Example
+## 6. Complete Workflow Example
 
 Here's how these APIs work together in a misinformation detection system:
 
