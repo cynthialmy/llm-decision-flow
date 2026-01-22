@@ -557,9 +557,160 @@ def iterative_evidence_gathering(claim: str, agent, max_iterations: int = 3):
 
 ## Conclusion
 
-In misinformation detection systems:
+---
 
-≈
+## 7. Decision Flow and Routing Logic
+
+### Overview
+
+The system uses a multi-stage pipeline with confidence-gated routing, SLM-first optimization, and deterministic orchestration. Each stage has specific thresholds that control routing decisions and ensure quality.
+
+### Complete Decision Flow
+
+```mermaid
+flowchart TD
+    Start([Transcript Input]) --> ClaimAgent["Claim Agent<br/>Groq LLM"]
+    ClaimAgent --> ClaimsCache["Claims Cache"]
+    ClaimsCache --> RiskSLM["Risk SLM<br/>Zentropi"]
+    
+    RiskSLM -->|"Confidence >= 0.6"| RiskDecision["Risk Decision"]
+    RiskSLM -->|"Confidence < 0.6"| RiskFallback["Risk Fallback<br/>Frontier LLM"]
+    RiskFallback --> RiskDecision
+    
+    RiskDecision -->|"Low Risk"| PolicySLM["Policy SLM<br/>Zentropi"]
+    RiskDecision -->|"Medium/High Risk + Confidence >= 0.6"| EvidenceAgent["Evidence Agent<br/>RAG Vector Store"]
+    
+    EvidenceAgent -->|"Similarity < 0.35 OR No Internal Evidence"| ExternalSearch["External Search<br/>Serper + Wikipedia"]
+    ExternalSearch -->|"Classify Results"| EvidenceClassify["Classify Evidence<br/>Groq"]
+    EvidenceClassify --> FactualityAgent["Factuality Agent<br/>Frontier LLM"]
+    EvidenceAgent -->|"Has Internal Evidence"| FactualityAgent
+    
+    FactualityAgent --> PolicySLM
+    PolicySLM -->|"Confidence >= 0.7"| PolicyDecision["Policy Decision"]
+    PolicySLM -->|"Confidence < 0.7"| PolicyFallback["Policy Fallback<br/>Frontier LLM"]
+    PolicyFallback --> PolicyDecision
+    
+    PolicyDecision --> QualityGate["Quality Gates<br/>Confidence Checks"]
+    QualityGate --> DecisionOrch["Decision Orchestrator"]
+    
+    DecisionOrch -->|"Low Risk + Policy >= 0.7"| Allow["Allow"]
+    DecisionOrch -->|"Medium Risk + Policy >= 0.6"| LabelDownrank["Label / Downrank"]
+    DecisionOrch -->|"Medium Risk + Policy < 0.6"| EscalateHuman["Escalate to Human"]
+    DecisionOrch -->|"High Risk + Policy < 0.6"| EscalateHuman
+    DecisionOrch -->|"High Risk + Policy >= 0.6"| HumanConfirm["Human Confirmation"]
+    
+    EscalateHuman --> HumanReview["Human Review Interface"]
+    HumanConfirm --> HumanReview
+    HumanReview --> Governance["Governance Log"]
+    Allow --> Governance
+    LabelDownrank --> Governance
+    Governance --> Metrics["Metrics Dashboard"]
+```
+
+### Agent Execution Routes
+
+#### 1. Claim Agent (Always Executed)
+- **Provider**: Groq (high-throughput LLM)
+- **Model**: `llama-3.3-70b-versatile`
+- **Purpose**: Extract factual claims from transcript
+- **Output**: List of claims with domain tags and confidence scores
+- **Threshold**: `claim_confidence_threshold = 0.65`
+  - **Why**: Claims below 0.65 confidence are ambiguous and may need human review for high-impact content
+
+#### 2. Risk Agent (Always Executed)
+- **Primary Route**: Zentropi SLM (fast classification)
+- **Fallback Route**: Frontier LLM (Azure OpenAI/Foundry) if SLM confidence < 0.6
+- **Purpose**: Assess potential harm and risk tier (Low/Medium/High)
+- **Output**: Risk tier, confidence, reasoning, vulnerable populations
+- **Threshold**: `risk_confidence_threshold = 0.6`
+  - **Why**: 0.6 balances speed (SLM) vs accuracy (frontier). Below 0.6, the claim is ambiguous enough to warrant frontier LLM analysis
+
+#### 3. Evidence Agent (Conditional Execution)
+- **Trigger**: Medium/High risk AND risk confidence >= 0.6
+- **Provider**: ChromaDB vector store (RAG)
+- **Purpose**: Retrieve supporting/contradicting evidence from internal knowledge base
+- **Output**: Evidence items with relevance scores
+- **Threshold**: `evidence_similarity_cutoff = 0.4`
+  - **Why**: Filters out low-signal evidence (relevance < 0.4) to reduce noise and improve factuality assessment quality
+
+#### 4. External Search (Conditional Execution)
+- **Trigger**: Medium/High risk AND (similarity < 0.35 OR no internal evidence)
+- **Providers**: Serper (Google Search) + Wikipedia API
+- **Purpose**: Find external evidence when internal KB is insufficient
+- **Classification**: Each result classified by Groq as supporting/contradicting/contextual
+- **Threshold**: `novelty_similarity_threshold = 0.35`
+  - **Why**: Similarity < 0.35 indicates high novelty (claim not well-covered in internal KB). External search fills gaps for novel claims that need verification
+
+#### 5. Factuality Agent (Conditional Execution)
+- **Trigger**: Medium/High risk AND risk confidence >= 0.6
+- **Provider**: Frontier LLM (Azure OpenAI/Foundry)
+- **Purpose**: Assess truthfulness of claims against evidence
+- **Output**: Factuality assessments (Likely True/False/Uncertain) with confidence
+- **Note**: Uses both internal and external classified evidence
+
+#### 6. Policy Agent (Always Executed)
+- **Primary Route**: Zentropi SLM (fast policy interpretation)
+- **Fallback Route**: Frontier LLM if SLM confidence < 0.7
+- **Purpose**: Interpret policy and determine violations
+- **Output**: Violation status, policy confidence, allowed contexts
+- **Threshold**: `policy_confidence_threshold = 0.7`
+  - **Why**: Policy decisions require higher confidence (0.7) than risk (0.6) because they directly affect content moderation actions
+
+### Decision Matrix
+
+The final decision is made based on risk tier and policy confidence:
+
+| Risk Tier | Policy Confidence | Decision Action | Rationale |
+|-----------|------------------|-----------------|-----------|
+| **Low** | ≥ 0.7 | **Allow** | Low risk + high confidence = safe to allow |
+| **Low** | < 0.7 | **Label / Downrank** | Low risk but uncertain = apply warning label |
+| **Medium** | ≥ 0.6 | **Label / Downrank** | Medium risk + moderate confidence = label for transparency |
+| **Medium** | < 0.6 | **Escalate to Human** | Medium risk + low confidence = needs human judgment |
+| **High** | < 0.6 | **Escalate to Human** | High risk + low confidence = critical, needs review |
+| **High** | ≥ 0.6 | **Human Confirmation** | High risk + high confidence = still needs human sign-off before action |
+
+### Human Review Triggers
+
+Human review is required when:
+
+1. **Decision Action Requires It**: `ESCALATE_HUMAN` or `HUMAN_CONFIRMATION`
+2. **Conflicting Evidence**: Medium/High risk content with contradicting evidence
+3. **Low Confidence Gates** (for Medium/High risk only):
+   - Claim confidence < 0.65
+   - Risk confidence < 0.6
+   - Policy confidence < 0.7 (for High risk)
+4. **Cross-Policy Conflicts**: Policy interpretation detects conflicts (e.g., violation but allowed contexts exist)
+
+### Threshold Summary and Rationale
+
+| Threshold | Value | Purpose | Why This Value |
+|-----------|-------|---------|----------------|
+| `claim_confidence_threshold` | 0.65 | Gate for claim extraction quality | 0.65 filters ambiguous claims while allowing clear ones. Too high (0.8+) would reject valid but nuanced claims. |
+| `risk_confidence_threshold` | 0.6 | SLM fallback trigger for risk | 0.6 balances speed vs accuracy. Below 0.6, risk assessment is uncertain enough to warrant frontier LLM. |
+| `policy_confidence_threshold` | 0.7 | SLM fallback trigger for policy | 0.7 is higher than risk because policy decisions directly affect moderation. Requires more certainty. |
+| `novelty_similarity_threshold` | 0.35 | External search trigger | 0.35 means similarity < 35% = high novelty. Low enough to catch novel claims, high enough to avoid unnecessary searches. |
+| `evidence_similarity_cutoff` | 0.4 | RAG relevance filter | 0.4 filters out low-signal evidence (relevance < 40%). Prevents noise from marginally relevant results. |
+
+### Performance Optimizations
+
+1. **SLM-First Routing**: Zentropi SLM runs first (fast, cheap). Falls back to frontier LLM only if confidence is low.
+2. **Conditional RAG**: Evidence retrieval only for Medium/High risk content with confident risk assessment.
+3. **External Search Gating**: Only triggers for high-novelty claims (similarity < 0.35) or when internal evidence is missing.
+4. **Groq for High-Throughput**: Claim extraction and evidence classification use Groq (fast inference).
+5. **Frontier LLM for Complex Tasks**: Factuality and fallback routes use frontier LLMs (higher accuracy).
+
+### Cost and Latency Controls
+
+- **SLM Timeout**: 2.5s per call (Zentropi)
+- **Frontier Timeout**: 6.0s per call (Azure OpenAI/Foundry)
+- **Token Budgets**: 
+  - SLM: 800 tokens max
+  - Frontier: 2000 tokens max
+  - Claim extraction: 900 tokens max
+
+---
+
+In misinformation detection systems:
 
 Together, these APIs create a comprehensive system that can:
 1. Understand claims and their context

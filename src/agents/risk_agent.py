@@ -70,11 +70,13 @@ Return a JSON object with this structure:
         slm_result: Optional[RiskAssessment] = None
         fallback_used = False
         route_reason = "slm_primary"
+        slm_error: Optional[str] = None
 
         if zentropi.is_configured():
             try:
                 content = f"{transcript}\n\nClaims:\n{claims_text}"
-                slm_response = zentropi.label(content)
+                criteria_text = "Label the content risk tier as one of: Low, Medium, High."
+                slm_response = zentropi.label(content, criteria_text=criteria_text)
                 slm_tier = self._map_label_to_risk_tier(slm_response.label)
                 if slm_tier:
                     slm_result = RiskAssessment(
@@ -87,8 +89,12 @@ Return a JSON object with this structure:
                         route_reason="slm_primary",
                         model_used="zentropi"
                     )
-            except Exception:
+                else:
+                    route_reason = f"slm_unmapped_label:{slm_response.label}"
+                    slm_error = f"Zentropi label unmapped: {slm_response.label}"
+            except Exception as exc:
                 slm_result = None
+                slm_error = f"Zentropi call failed: {exc}"
 
         if slm_result is None or slm_result.confidence < settings.risk_confidence_threshold:
             fallback_used = True
@@ -117,11 +123,12 @@ Return a JSON object with this structure:
             model_provider="zentropi" if response.model_used == "zentropi" else "azure_openai",
             prompt_hash=self._prompt_hash(system_prompt, user_prompt),
             confidence=response.confidence,
-            route_reason=response.route_reason,
+            route_reason=response.route_reason or route_reason,
             fallback_used=fallback_used,
             policy_version=settings.policy_version,
             execution_time_ms=elapsed_ms,
-            status="completed"
+            status="completed",
+            error=slm_error
         )
 
         return response, detail

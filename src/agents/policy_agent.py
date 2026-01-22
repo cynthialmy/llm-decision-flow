@@ -121,11 +121,13 @@ Return a JSON object with this structure:
         slm_result: Optional[PolicyInterpretation] = None
         fallback_used = False
         route_reason = "slm_primary"
+        slm_error: Optional[str] = None
 
         if zentropi.is_configured():
             try:
                 content = f"{claims_text}\n\nFactuality:\n{factuality_text}\n\nRisk:{risk_assessment.tier.value}"
-                slm_response = zentropi.label(content)
+                criteria_text = "Label the policy outcome as one of: Yes, No, Contextual."
+                slm_response = zentropi.label(content, criteria_text=criteria_text)
                 violation = self._map_label_to_violation(slm_response.label)
                 if violation:
                     slm_result = PolicyInterpretation(
@@ -138,8 +140,12 @@ Return a JSON object with this structure:
                         model_used="zentropi",
                         route_reason="slm_primary"
                     )
-            except Exception:
+                else:
+                    route_reason = f"slm_unmapped_label:{slm_response.label}"
+                    slm_error = f"Zentropi label unmapped: {slm_response.label}"
+            except Exception as exc:
                 slm_result = None
+                slm_error = f"Zentropi call failed: {exc}"
 
         if slm_result is None or slm_result.policy_confidence < settings.policy_confidence_threshold:
             fallback_used = True
@@ -168,11 +174,12 @@ Return a JSON object with this structure:
             model_provider="zentropi" if response.model_used == "zentropi" else "azure_openai",
             prompt_hash=self._prompt_hash(system_prompt, user_prompt),
             confidence=response.policy_confidence,
-            route_reason=response.route_reason,
+            route_reason=response.route_reason or route_reason,
             fallback_used=fallback_used,
             policy_version=settings.policy_version,
             execution_time_ms=elapsed_ms,
-            status="completed"
+            status="completed",
+            error=slm_error
         )
 
         return response, detail

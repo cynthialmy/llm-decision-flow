@@ -421,6 +421,12 @@ def main() -> None:
 
         analysis: Optional[AnalysisResponse] = st.session_state.analysis
 
+        with st.expander("Provider Status", expanded=False):
+            zentropi_ready = bool(settings.zentropi_api_key and settings.zentropi_labeler_id and settings.zentropi_labeler_version_id)
+            st.markdown(f"**Zentropi configured**: {zentropi_ready}")
+            st.markdown(f"**Groq configured**: {bool(settings.groq_api_key)}")
+            st.markdown(f"**Serper configured**: {bool(settings.serper_api_key)}")
+
         st.subheader("Decision Flow")
         build_flow_graph(
             analysis.agent_executions if analysis else None,
@@ -434,6 +440,14 @@ def main() -> None:
             st.markdown(f"**Routing**: {route}")
             st.markdown(f"**Risk reasoning**: {analysis.risk_assessment.reasoning}")
             st.markdown(f"**Risk confidence**: {analysis.risk_assessment.confidence:.2f}")
+
+            # Show novelty info for medium/high-risk cases
+            if analysis.risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and analysis.evidence:
+                if analysis.evidence.contextual or analysis.evidence.supporting or analysis.evidence.contradicting:
+                    external_count = len(analysis.evidence.contextual) + len(analysis.evidence.supporting) + len(analysis.evidence.contradicting)
+                    st.info(f"🔍 **External search triggered**: {analysis.risk_assessment.tier.value} risk + high novelty. Found {external_count} external result(s).")
+                elif analysis.evidence.evidence_gap:
+                    st.warning("⚠️ **High novelty detected** (no internal evidence found), but external search may be disabled, failed, or returned no results.")
 
             st.subheader("Final Decision")
             st.markdown(f"**Action**: {analysis.decision.action.value}")

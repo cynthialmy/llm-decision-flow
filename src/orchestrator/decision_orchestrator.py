@@ -8,6 +8,7 @@ from src.agents.policy_agent import PolicyAgent
 from src.config import settings
 from src.rag.external_search import ExternalSearchClient
 from src.rag.vector_store import VectorStore
+from src.llm.groq_client import GroqClient
 from src.models.schemas import (
     Decision, DecisionAction, RiskTier, AnalysisResponse,
     Claim, RiskAssessment, Evidence, FactualityAssessment, PolicyInterpretation, EvidenceItem,
@@ -58,11 +59,24 @@ class DecisionOrchestrator:
             evidence, evidence_detail = self.evidence_agent.process(claims)
             agent_executions.append(evidence_detail)
 
-            # Step 3b: External search for high-risk + high-novelty
-            if risk_assessment.tier == RiskTier.HIGH:
-                novelty_score = self._max_claim_similarity(claims)
-                if novelty_score < settings.novelty_similarity_threshold:
+            # Step 3b: External search for medium/high-risk + high-novelty
+            if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
+                # Calculate similarity to internal evidence (0.0 = no match = high novelty)
+                similarity_score = self._max_claim_similarity(claims)
+                # Also check if we have no internal evidence at all
+                has_internal_evidence = len(evidence.supporting) > 0 or len(evidence.contradicting) > 0
+                if similarity_score < settings.novelty_similarity_threshold or not has_internal_evidence:
+                    # High novelty: similarity below threshold OR no internal evidence triggers external search
                     evidence = self._attach_external_context(evidence, claims)
+                    # Mark that external search was used due to novelty
+                    if evidence:
+                        reason_parts = []
+                        if similarity_score < settings.novelty_similarity_threshold:
+                            reason_parts.append(f"High novelty (similarity: {similarity_score:.2f} < {settings.novelty_similarity_threshold})")
+                        if not has_internal_evidence:
+                            reason_parts.append("No internal evidence found")
+                        if reason_parts:
+                            evidence.evidence_gap_reason = ". ".join(reason_parts) + ". " + (evidence.evidence_gap_reason or "")
 
             # Step 4: Assess factuality
             factuality_assessments, factuality_detail = self.factuality_agent.process(claims, evidence)
@@ -249,15 +263,68 @@ class DecisionOrchestrator:
 
     @staticmethod
     def _max_claim_similarity(claims: list[Claim]) -> float:
+        """Calculate max similarity of claims to internal evidence.
+
+        Returns similarity score (0.0-1.0):
+            - 0.0 = no similarity (high novelty) - triggers external search
+            - 1.0 = perfect match (low novelty) - no external search needed
+
+        Note: This is a SIMILARITY score, not novelty. Lower similarity = higher novelty.
+        """
         if not claims:
             return 0.0
         vector_store = VectorStore()
+        # Check if vector store has any documents
+        all_docs = vector_store.get_all_documents()
+        if not all_docs:
+            # Empty vector store = similarity 0.0 = high novelty
+            return 0.0
+
         max_similarity = 0.0
         for claim in claims:
             score = vector_store.max_similarity(claim.text, index_version=settings.evidence_index_version)
             if score is not None:
                 max_similarity = max(max_similarity, score)
+        # If no matches found for any claim, return 0.0 (similarity 0 = high novelty)
         return max_similarity
+
+    @staticmethod
+    def _classify_external_evidence(claim: str, evidence_text: str) -> str:
+        """Classify external evidence as supporting, contradicting, or contextual.
+        
+        Returns: "supporting", "contradicting", or "contextual"
+        """
+        try:
+            groq = GroqClient()
+            prompt = f"""Classify whether the following evidence supports, contradicts, or is neutral/contextual to the claim.
+
+Claim: {claim}
+
+Evidence: {evidence_text}
+
+Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
+            
+            response = groq.chat(
+                prompt=prompt,
+                system_prompt="You are a fact-checking classifier. Classify evidence as supporting, contradicting, or contextual. Respond with only one word.",
+                temperature=0.1,
+                max_tokens=15
+            )
+            
+            classification = response["content"].strip().lower()
+            # More robust classification parsing
+            if any(word in classification for word in ["support", "agree", "confirm", "true", "correct"]):
+                return "supporting"
+            elif any(word in classification for word in ["contradict", "false", "dispute", "refute", "incorrect", "wrong"]):
+                return "contradicting"
+            else:
+                return "contextual"
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to classify external evidence: {e}")
+            # If classification fails, default to contextual
+            return "contextual"
 
     @staticmethod
     def _attach_external_context(evidence: Optional[Evidence], claims: list[Claim]) -> Evidence:
@@ -272,39 +339,73 @@ class DecisionOrchestrator:
                 evidence_gap_reason="No internal evidence available."
             )
         search_client = ExternalSearchClient()
-        contextual_items = []
+        external_items = []
         for claim in claims[:3]:
             results = search_client.search(claim.text)
             for result in results:
                 text = result.get("snippet") or result.get("title") or "Context snippet unavailable."
-                contextual_items.append({
+                external_items.append({
                     "text": text,
                     "source": result.get("source") or "external",
-                    "source_quality": "context",
-                    "timestamp": None,
-                    "relevance_score": 0.0,
+                    "claim": claim.text,
                 })
 
-        for item in contextual_items:
-            evidence.contextual.append(EvidenceItem(**item))
+        # Classify external results as supporting, contradicting, or contextual
+        supporting_items = []
+        contradicting_items = []
+        contextual_items = []
+        
+        for item in external_items:
+            classification = DecisionOrchestrator._classify_external_evidence(
+                claim=item["claim"],
+                evidence_text=item["text"]
+            )
+            evidence_item = EvidenceItem(
+                text=item["text"],
+                source=item["source"],
+                source_quality="external",
+                timestamp=None,
+                relevance_score=0.5,  # External results get moderate relevance
+            )
+            
+            if classification == "supporting":
+                supporting_items.append(evidence_item)
+            elif classification == "contradicting":
+                contradicting_items.append(evidence_item)
+            else:
+                contextual_items.append(evidence_item)
+
+        # Add classified items to evidence
+        evidence.supporting.extend(supporting_items)
+        evidence.contradicting.extend(contradicting_items)
+        evidence.contextual.extend(contextual_items)
+        
+        # Update evidence confidence if we found supporting/contradicting evidence
+        if supporting_items or contradicting_items:
+            total_classified = len(supporting_items) + len(contradicting_items)
+            support_ratio = len(supporting_items) / total_classified if total_classified > 0 else 0.0
+            evidence.evidence_confidence = max(evidence.evidence_confidence, support_ratio * 0.7)
+            evidence.conflicts_present = len(contradicting_items) > 0
 
         if evidence.supporting == [] and evidence.contradicting == []:
             evidence.evidence_gap = True
             evidence.evidence_gap_reason = evidence.evidence_gap_reason or "No supporting or contradicting internal evidence."
 
-        if settings.allow_external_enrichment and contextual_items:
+        if settings.allow_external_enrichment and (supporting_items or contradicting_items or contextual_items):
             vector_store = VectorStore()
-            docs = [item["text"] for item in contextual_items if item.get("text")]
+            # Collect all external evidence for enrichment
+            all_external = supporting_items + contradicting_items + contextual_items
+            docs = [item.text for item in all_external]
             metadatas = [
                 {
-                    "source": item.get("source", "external"),
+                    "source": item.source,
                     "domain": "external",
-                    "quality": "context",
+                    "quality": "external",
                     "timestamp": None,
                     "index_version": settings.evidence_index_version,
                     "origin": "external_search",
                 }
-                for item in contextual_items if item.get("text")
+                for item in all_external
             ]
             if docs:
                 try:

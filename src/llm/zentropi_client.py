@@ -19,17 +19,25 @@ class ZentropiClient:
     """Thin client for Zentropi label API."""
 
     def __init__(self):
-        self.api_key = settings.zentropi_api_key
-        self.labeler_id = settings.zentropi_labeler_id
-        self.labeler_version_id = settings.zentropi_labeler_version_id
+        self.api_key = self._clean(settings.zentropi_api_key)
+        self.labeler_id = self._clean(settings.zentropi_labeler_id)
+        self.labeler_version_id = self._clean(settings.zentropi_labeler_version_id)
         self.base_url = "https://api.zentropi.ai/v1/label"
 
     def is_configured(self) -> bool:
         return all([self.api_key, self.labeler_id, self.labeler_version_id])
 
-    def label(self, content_text: str) -> ZentropiResult:
+    @staticmethod
+    def _clean(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    def label(self, content_text: str, criteria_text: Optional[str] = None) -> ZentropiResult:
         if not self.is_configured():
-            raise ValueError("Zentropi is not configured. Set ZENTROPI_API_KEY and labeler IDs.")
+            if not self.api_key:
+                raise ValueError("Zentropi is not configured. Set ZENTROPI_API_KEY.")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -37,9 +45,12 @@ class ZentropiClient:
         }
         payload = {
             "content_text": content_text,
-            "labeler_id": self.labeler_id,
-            "labeler_version_id": self.labeler_version_id,
         }
+        if self.labeler_id and self.labeler_version_id:
+            payload["labeler_id"] = self.labeler_id
+            payload["labeler_version_id"] = self.labeler_version_id
+        if criteria_text:
+            payload["criteria_text"] = criteria_text
 
         timeout = settings.slm_timeout_s
         with httpx.Client(timeout=timeout) as client:
