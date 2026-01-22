@@ -6,6 +6,7 @@ import json
 import streamlit as st
 import matplotlib.pyplot as plt
 from pyvis.network import Network
+from sqlalchemy.orm import joinedload
 
 from src.orchestrator.decision_orchestrator import DecisionOrchestrator
 from src.models.schemas import (
@@ -553,7 +554,13 @@ def render_agent_details(
 def load_recent_decisions(limit: int = 20) -> List[DecisionRecord]:
     session = SessionLocal()
     try:
-        return session.query(DecisionRecord).order_by(DecisionRecord.created_at.desc()).limit(limit).all()
+        return (
+            session.query(DecisionRecord)
+            .options(joinedload(DecisionRecord.review))
+            .order_by(DecisionRecord.created_at.desc())
+            .limit(limit)
+            .all()
+        )
     finally:
         session.close()
 
@@ -567,8 +574,8 @@ def load_recent_reviews(limit: int = 20) -> List[ReviewRecord]:
 
 
 def main() -> None:
-    st.set_page_config(page_title="LLM Decision Flow", layout="wide")
-    st.title("LLM Decision Flow - Step-by-Step Analysis")
+    st.set_page_config(page_title="Agentic Factuality Evaluator", layout="wide")
+    st.title("Agentic Factuality Evaluator")
     st.caption("Run the pipeline and inspect each agent's prompts, routing, and results.")
 
     policy_text = load_policy_text()
@@ -779,10 +786,10 @@ def main() -> None:
                 [auto_count, human_count]
             )
         with chart_col4:
-            reversals = metrics.get("reversals", 0)
+            disagreement_count = metrics.get("disagreement_count", 0)
             total_reviews = metrics.get("total_reviews", 0)
             disagreement_rate = (
-                reversals / total_reviews if total_reviews > 0 else 0.0
+                disagreement_count / total_reviews if total_reviews > 0 else 0.0
             )
             st.markdown("**Disagreement**")
             st.markdown(
@@ -790,7 +797,7 @@ def main() -> None:
                 f"{disagreement_rate:.0%}</div>",
                 unsafe_allow_html=True,
             )
-            st.caption(f"{reversals} / {total_reviews} reviews")
+            st.caption(f"{disagreement_count} / {total_reviews} reviews")
 
         st.subheader("Recent Decisions")
         decisions = load_recent_decisions()
@@ -829,6 +836,31 @@ def main() -> None:
             selected_id = st.selectbox("Inspect decision", [row["id"] for row in decision_rows])
             selected = next((d for d in decisions if d.id == selected_id), None)
             if selected:
+                review_status = "Not queued"
+                if selected.review:
+                    if selected.review.status == "pending":
+                        review_status = "Pending review"
+                    elif selected.review.status == "reviewed":
+                        review_status = "Reviewed"
+                    else:
+                        review_status = selected.review.status
+                review_id = selected.review.id if selected.review else None
+                review_label = f"{review_status}"
+                if review_id:
+                    review_label = f"{review_status} (Review ID {review_id})"
+                st.caption(f"Review status: {review_label}")
+                if st.button("Send to human review queue", type="secondary"):
+                    governance_logger = GovernanceLogger()
+                    result = governance_logger.enqueue_review_for_decision(selected.id)
+                    if result == "created":
+                        st.success("Sent to human review queue.")
+                    elif result == "reset_pending":
+                        st.success("Review reset to pending.")
+                    elif result == "already_pending":
+                        st.info("Review is already pending.")
+                    else:
+                        st.error("Failed to enqueue review.")
+                    st.rerun()
                 st.markdown("**Decision details**")
                 st.json({
                     "decision_action": selected.decision_action,
@@ -870,15 +902,18 @@ def main() -> None:
             with st.expander(f"Recently Reviewed ({len(reviewed)} reviews)", expanded=False):
                 reviewed_rows = []
                 reviewed_options = {}
+                reviewed_decision_ids = {}
                 for review_item in reviewed:
                     snippet = _truncate_text(review_item.transcript.replace("\n", " "), 100)
                     reviewed_rows.append({
+                        "Decision ID": review_item.decision_id,
                         "Review ID": review_item.id,
                         "Reviewed at": review_item.reviewed_at.strftime("%Y-%m-%d %H:%M:%S") if review_item.reviewed_at else "N/A",
                         "Human Decision": review_item.human_decision.action.value if review_item.human_decision else "N/A",
                         "Transcript snippet": snippet,
                     })
                     reviewed_options[review_item.id] = review_item
+                    reviewed_decision_ids[review_item.id] = review_item.decision_id
                 st.dataframe(reviewed_rows, width="stretch")
 
                 # Reset controls
@@ -888,7 +923,7 @@ def main() -> None:
                     selected_review_id = st.selectbox(
                         "Select review to reset",
                         options=list(reviewed_options.keys()),
-                        format_func=lambda x: f"Review {x} - {_truncate_text(reviewed_options[x].transcript.replace(chr(10), ' '), 60)}"
+                        format_func=lambda x: f"Review {x} (Decision {reviewed_decision_ids.get(x)}) - {_truncate_text(reviewed_options[x].transcript.replace(chr(10), ' '), 60)}"
                     )
                     reset_single = st.button("Reset Selected Review", type="secondary")
 
@@ -936,14 +971,17 @@ def main() -> None:
             # Build review list and table
             pending_rows = []
             review_list = []
+            review_id_to_decision_id = {}
             for review_item in pending:
                 snippet = _truncate_text(review_item.transcript.replace("\n", " "), 140)
                 pending_rows.append({
-                    "Case ID": review_item.id,
+                    "Decision ID": review_item.decision_id,
+                    "Review ID": review_item.id,
                     "Risk tier": review_item.risk_assessment.tier.value,
                     "Transcript snippet": snippet,
                 })
                 review_list.append(review_item)
+                review_id_to_decision_id[review_item.id] = review_item.decision_id
 
             # Display review queue table at the top
             st.dataframe(pending_rows, width="stretch")
@@ -972,10 +1010,10 @@ def main() -> None:
                     # Use a dynamic key based on index to force update when index changes
                     selectbox_key = f"case_id_selector_{st.session_state.current_review_index}"
                     selected_case_id = st.selectbox(
-                        "",
+                        "Select review to inspect",
                         options=case_ids,
                         index=st.session_state.current_review_index,
-                        format_func=lambda x: f"Case ID: {x}",
+                        format_func=lambda x: f"Review {x} (Decision {review_id_to_decision_id.get(x)})",
                         key=selectbox_key,
                         label_visibility="collapsed"
                     )

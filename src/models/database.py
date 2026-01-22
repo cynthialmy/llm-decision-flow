@@ -52,6 +52,7 @@ class ReviewRecord(Base):
     human_decision_rationale = Column(Text, nullable=True)
     human_rationale = Column(Text, nullable=True)
     reviewer_feedback_json = Column(JSON, nullable=True)
+    manual_override = Column(Boolean, default=False)
 
     # Status
     status = Column(String, default="pending")  # pending, reviewed, resolved
@@ -110,6 +111,8 @@ def _ensure_schema(engine):
             conn.execute(sqlalchemy.text("ALTER TABLE decisions ADD COLUMN agent_executions_json JSON"))
         if not _has_column("reviews", "reviewer_feedback_json"):
             conn.execute(sqlalchemy.text("ALTER TABLE reviews ADD COLUMN reviewer_feedback_json JSON"))
+        if not _has_column("reviews", "manual_override"):
+            conn.execute(sqlalchemy.text("ALTER TABLE reviews ADD COLUMN manual_override BOOLEAN"))
         conn.commit()
 
 

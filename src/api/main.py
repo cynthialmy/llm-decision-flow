@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes import content, review, metrics
 
 app = FastAPI(
-    title="LLM Decision Flow API",
+    title="Agentic Factuality Evaluator API",
     description="Policy-Aware Misinformation Decision System",
     version="1.0.0"
 )
@@ -27,7 +27,7 @@ app.include_router(metrics.router, prefix="/api", tags=["metrics"])
 @app.get("/")
 def root():
     """Root endpoint."""
-    return {"message": "LLM Decision Flow API", "version": "1.0.0"}
+    return {"message": "Agentic Factuality Evaluator API", "version": "1.0.0"}
 
 
 @app.get("/health")

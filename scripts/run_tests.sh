@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test script to verify the application setup
 
-echo "🧪 Testing LLM Decision Flow Setup"
+echo "🧪 Testing Agentic Factuality Evaluator Setup"
 echo "===================================="
 echo ""
 

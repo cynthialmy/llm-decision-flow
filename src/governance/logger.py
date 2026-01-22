@@ -137,6 +137,7 @@ class GovernanceLogger:
 
         payload = {
             "id": review_record.id,
+            "decision_id": decision_record.id,
             "transcript": decision_record.transcript,
             "claims": [claim.model_dump() for claim in claims],
             "risk_assessment": risk_assessment.model_dump(),
@@ -180,6 +181,51 @@ class GovernanceLogger:
             for review in reviewed_reviews
             if self.get_review_request(review.id) is not None
         ]
+
+    def enqueue_review_for_decision(self, decision_id: int) -> str:
+        """
+        Enqueue a decision for human review, regardless of original routing.
+
+        Returns:
+            "created" if a new review was created,
+            "reset_pending" if an existing reviewed item was reset,
+            "already_pending" if already pending,
+            "not_found" if the decision does not exist.
+        """
+        decision_record = self.db.query(DecisionRecord).filter(
+            DecisionRecord.id == decision_id
+        ).first()
+        if not decision_record:
+            return "not_found"
+
+        review_record = decision_record.review
+        if review_record is None:
+            review_record = ReviewRecord(
+                decision_id=decision_id,
+                status="pending",
+                manual_override=True
+            )
+            self.db.add(review_record)
+            decision_record.requires_human_review = True
+            self.db.commit()
+            return "created"
+
+        if review_record.status == "pending":
+            return "already_pending"
+
+        if review_record.status == "reviewed":
+            review_record.status = "pending"
+            review_record.reviewed_at = None
+            review_record.human_decision_action = None
+            review_record.human_decision_rationale = None
+            review_record.human_rationale = None
+            review_record.reviewer_feedback_json = None
+            review_record.manual_override = True
+            decision_record.requires_human_review = True
+            self.db.commit()
+            return "reset_pending"
+
+        return "not_found"
 
     def submit_human_decision(
         self,

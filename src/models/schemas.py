@@ -191,6 +191,7 @@ class ReviewRequest(BaseModel):
     """Human review request."""
     model_config = ConfigDict(protected_namespaces=())
     id: Optional[int] = Field(None, description="Review request ID")
+    decision_id: Optional[int] = Field(None, description="Decision record ID")
     transcript: str = Field(..., description="Original transcript")
     claims: List[Claim] = Field(..., description="Extracted claims")
     risk_assessment: RiskAssessment = Field(..., description="Risk assessment")

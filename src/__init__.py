@@ -1,1 +1,1 @@
-"""LLM Decision Flow - Policy-Aware Misinformation Decision System."""
+"""Agentic Factuality Evaluator: Policy-Aware Misinformation Decision System."""

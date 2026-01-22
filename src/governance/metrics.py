@@ -73,22 +73,28 @@ class MetricsCalculator:
         # Over-enforcement proxy (appeal reversal rate)
         # This is approximated by human decisions that differ from system decisions
         reviews = self.db.query(ReviewRecord).filter(
-            ReviewRecord.reviewed_at >= cutoff_date,
-            ReviewRecord.status == "reviewed"
+            ReviewRecord.created_at >= cutoff_date
         ).all()
 
         reversals = 0
+        manual_override_count = 0
+        disagreement_cases = set()
         total_reviews = len(reviews)
         for review in reviews:
             decision = review.decision
             if (review.human_decision_action and
                 review.human_decision_action != decision.decision_action):
                 reversals += 1
+                disagreement_cases.add(review.id)
+            if review.manual_override:
+                manual_override_count += 1
+                disagreement_cases.add(review.id)
+
+        model_human_disagreement = (
+            len(disagreement_cases) / total_reviews if total_reviews > 0 else 0.0
+        )
 
         over_enforcement_proxy = reversals / total_reviews if total_reviews > 0 else 0.0
-
-        # Model vs human disagreement
-        model_human_disagreement = reversals / total_reviews if total_reviews > 0 else 0.0
 
         # Human review load
         pending_reviews = self.db.query(ReviewRecord).filter(
@@ -125,6 +131,8 @@ class MetricsCalculator:
             "total_decisions": total_decisions,
             "total_reviews": total_reviews,
             "reversals": reversals,
+            "manual_override_count": manual_override_count,
+            "disagreement_count": len(disagreement_cases),
             "period_days": days,
             "case_count_by_risk_tier": case_count_by_risk_tier,
             "case_count_by_decision_action": case_count_by_decision_action,
@@ -156,6 +164,8 @@ class MetricsCalculator:
             "total_decisions": 0,
             "total_reviews": 0,
             "reversals": 0,
+            "manual_override_count": 0,
+            "disagreement_count": 0,
             "period_days": 7,
             "case_count_by_risk_tier": {
                 RiskTier.LOW.value: 0,
