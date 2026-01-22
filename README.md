@@ -267,21 +267,75 @@ The goal is **not** to build a production system, but to demonstrate *Senior PM�
 * Real‑time enforcement
 * Model self‑learning
 
-## 9. Setup & Configuration
+---
+
+## 9. Local Policy + Evidence Files
+
+This repo expects a couple of local directories that are **not committed**:
+
+* `policies/` for the policy text file used by the Policy Agent
+* `data/evidence/` for text files used to seed the RAG evidence index
+
+If `policies/misinformation_policy.txt` is missing, the system falls back to a small default policy embedded in code. For demos, create the file and keep it short and readable.
+
+Evidence files should be `.txt` documents in `data/evidence/`. The filename is used to infer a domain (health/civic/finance) when possible.
+
+---
+
+## 10. UI & UX Flow
+
+The Streamlit interface (`streamlit run streamlit_app.py`) provides three main tabs:
+
+### **Analysis Tab** (Primary Workflow)
+1. **Input**: Paste content transcript in text area
+2. **Process**: Click "Analyze Transcript" → system shows real-time progress through pipeline stages
+3. **Results Display**:
+   - **Decision Flow Graph**: Interactive visualization of agent execution path
+   - **Routing Decision**: Risk tier, confidence, and routing logic (e.g., "High risk → Evidence Agent")
+   - **Final Decision**: Action (Allow/Label/Escalate), confidence, rationale
+   - **Claims**: Hierarchical view of extracted claims with domains
+   - **Evidence & Factuality**: Supporting/contradicting evidence with source attribution
+   - **Policy Interpretation**: Violation status and policy reasoning
+   - **Agent Execution Details**: Expandable sections showing prompts, responses, and routing for each agent
+
+### **Dashboard Tab** (Metrics & Monitoring)
+- **Trust Metrics**: Risk tier distribution, decision type distribution, auto vs human review rates, model-human disagreement rate
+- **Recent Decisions**: Table of recent analyses with ability to inspect individual decisions
+- **Review Trail**: Historical review decisions and feedback
+
+### **Human Review Tab** (Escalation Handling)
+- **Review Queue**: List of items requiring human review (escalated or flagged for confirmation)
+- **Review Interface**:
+  - Navigate through pending reviews
+  - View full analysis context (claims, evidence, agent reasoning)
+  - Submit override decisions with rationale
+  - Provide feedback for system improvement
+- **Configuration Management**: View and activate different system configuration versions
+
+**Key UX Features**:
+- Real-time progress indicators during analysis
+- Expandable sections for detailed inspection
+- Color-coded decision flow graph showing agent routing
+- JSON exports for all structured data
+- Provider status indicators (Zentropi, Groq, Serper configuration)
+
+---
+
+## 11. Setup & Configuration
 
 See [SETUP.md](SETUP.md) for complete installation, configuration, and testing instructions.
 
 **Quick Start**:
 1. Install dependencies: `pip install -r requirements.txt`
 2. Configure `.env` file (see SETUP.md)
-3. Test setup: `python scripts/test_foundry_agent.py`
-4. Populate evidence: `python scripts/populate_evidence.py`
-5. Run server: `python run_server.py`
-6. Launch Streamlit UI: `streamlit run streamlit_app.py`
+3. Create local folders: `policies/` and `data/evidence/`
+4. Run tests and populate evidence (see SETUP.md)
+5. Start server: `python run_server.py`
+6. Launch UI: `streamlit run streamlit_app.py`
 
 ---
 
-## 10. How to Demo This (10 Minutes)
+## 12. How to Demo This (10 Minutes)
 
 1. Problem framing (1 min)
 2. System overview (2 min)
@@ -290,114 +344,28 @@ See [SETUP.md](SETUP.md) for complete installation, configuration, and testing i
 5. Human escalation & metrics (2 min)
 
 
-
-
 ## Tool Selection & Rationale
 
 ### **Overall Principle**
 
 Select tools based on **risk surface, cost efficiency, latency sensitivity, and governance requirements**, not model capability alone. Use the *cheapest, fastest, most controllable* tool that is sufficient for each decision layer.
 
----
+### **Tool Mapping**
 
-### **1. Groq (LLM) — Claim Extraction**
+| Stage | Primary Tool | Fallback | Rationale |
+|-------|-------------|---------|-----------|
+| **Claim Extraction** | Groq LLM | - | High-volume, low-risk, needs speed |
+| **Risk Assessment** | Zentropi SLM | Azure OpenAI | Fast classification, fallback for uncertainty |
+| **Evidence Retrieval** | Internal RAG | External Search | Curated first, external only for novelty |
+| **Factuality Assessment** | Azure OpenAI | - | Highest-risk reasoning, needs precision |
+| **Policy Interpretation** | Zentropi SLM | Azure OpenAI | Fast classification, fallback for uncertainty |
 
-**Role**
+### **Key Design Principles**
 
-* Extract factual claims from transcripts with structured output.
+* **Fast models where mistakes are cheap** (Groq for claims)
+* **Steerable models where policy consistency matters** (Zentropi for risk/policy)
+* **Frontier models where trust impact is highest** (Azure for factuality)
+* **Explicit routing over agent autonomy** (confidence-gated fallbacks)
+* **Reversible, confidence-gated automation** (human escalation built-in)
 
-**Rationale**
-
-* Claim extraction is **high-volume, low-policy risk, and highly parallelizable**.
-* Benefits most from **ultra-low latency and throughput**, not deep reasoning.
-* Errors are recoverable downstream (Risk / Factuality / Policy).
-
-**Positioning**
-
-* Front-of-pipeline accelerator.
-* No direct enforcement impact.
-
----
-
-### **2. Zentropi SLM (CoPE-style) — Risk + Policy**
-
-**Role**
-
-* Risk tiering (Low / Medium / High).
-* Policy interpretation and violation classification.
-
-**Rationale**
-
-* Risk and policy decisions are **repetitive, policy-bound, and cost-sensitive at scale**.
-* Policy-steerable SLMs provide:
-
-  * Lower latency and cost
-  * Higher consistency
-  * Easier policy updates without retraining
-* Ideal for **first-pass enforcement logic** with confidence thresholds.
-
-**Positioning**
-
-* Default decision engine.
-* Escalates only low-confidence or conflicting cases.
-
----
-
-### **3. Azure OpenAI / Foundry (LLM) — Factuality + Fallback**
-
-**Role**
-
-* Evidence-based factuality assessment.
-* Fallback for any low-confidence Risk or Policy decisions.
-
-**Rationale**
-
-* Factuality is the **highest-risk reasoning surface**:
-
-  * External evidence
-  * Nuanced interpretation
-  * Direct trust impact
-* Requires **strong reasoning, traceability, and auditability**.
-* Lower call volume due to risk-gated execution.
-
-**Positioning**
-
-* Precision layer, not throughput layer.
-* Preserved for safety, credibility, and incident response.
-
----
-
-### **4. Internal RAG (Primary Evidence Source)**
-
-**Role**
-
-* Retrieve curated supporting / contradicting evidence.
-
-**Rationale**
-
-* Ensures **consistency, explainability, and governance**.
-* Avoids volatility and manipulation risk of live web search.
-* Enables reproducible enforcement decisions.
-
----
-
-### **5. Web Search / External KBs (Exception Path Only)**
-
-**Role**
-
-* Supplement evidence for **high-risk, novel, time-sensitive claims**.
-
-**Rationale**
-
-* External search increases variance and governance risk.
-* Used only when internal evidence confidence is insufficient.
-
----
-
-## Final Architectural Intent
-
-* **Fast models where mistakes are cheap**
-* **Steerable models where policy consistency matters**
-* **Frontier models where trust impact is highest**
-* **Explicit routing over agent autonomy**
-* **Reversible, confidence-gated automation**
+For detailed API usage patterns and implementation details, see [API_Usage_Explanation.md](API_Usage_Explanation.md).

@@ -53,6 +53,16 @@ This installs all required packages including:
 - SQLAlchemy (database ORM)
 - Pydantic (data validation)
 
+### 4. Create Local Data Folders
+
+The app expects local directories that are not tracked in git:
+
+```bash
+mkdir -p policies data/evidence
+```
+
+If you do not provide `policies/misinformation_policy.txt`, the app uses a small built-in fallback policy.
+
 ---
 
 ## Configuration
@@ -72,9 +82,16 @@ AZURE_EXISTING_AIPROJECT_ENDPOINT=https://your-resource.services.ai.azure.com/ap
 # Foundry Agent ID (required)
 AZURE_EXISTING_AGENT_ID=your-agent-name:1
 
+# API Version (optional, default: 2024-02-15-preview)
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
 # Embedding Deployment (required for RAG/evidence retrieval)
 # This should be the name of your embedding model deployment (e.g., text-embedding-ada-002)
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+
+# Optional: explicit embedding endpoint override
+# Useful when the derived endpoint doesn't host the embedding deployment
+AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-resource.openai.azure.com/
 
 # API Key (required for embeddings - Foundry agents use Azure credentials, but embeddings need API key)
 AZURE_OPENAI_API_KEY=your-api-key-here
@@ -98,6 +115,11 @@ RISK_CONFIDENCE_THRESHOLD=0.6
 POLICY_CONFIDENCE_THRESHOLD=0.7
 NOVELTY_SIMILARITY_THRESHOLD=0.35
 EVIDENCE_SIMILARITY_CUTOFF=0.4
+
+# Optional runtime controls
+ALLOW_EXTERNAL_SEARCH=true
+ALLOW_RUNTIME_INDEXING=false
+EVIDENCE_INDEX_VERSION=v1
 
 # External search allowlist (comma-separated domains)
 EXTERNAL_SEARCH_ALLOWLIST=gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com
@@ -138,6 +160,12 @@ AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
 # API Version
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
 
+# Embedding deployment (required for RAG)
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+
+# Optional embedding endpoint override
+AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-resource.openai.azure.com/
+
 # Optional SLM + Search Providers
 GROQ_API_KEY=your-groq-key
 ZENTROPI_API_KEY=your-zentropi-key
@@ -152,6 +180,11 @@ RISK_CONFIDENCE_THRESHOLD=0.6
 POLICY_CONFIDENCE_THRESHOLD=0.7
 NOVELTY_SIMILARITY_THRESHOLD=0.35
 EVIDENCE_SIMILARITY_CUTOFF=0.4
+
+# Optional runtime controls
+ALLOW_EXTERNAL_SEARCH=true
+ALLOW_RUNTIME_INDEXING=false
+EVIDENCE_INDEX_VERSION=v1
 EXTERNAL_SEARCH_ALLOWLIST=gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com
 ALLOW_EXTERNAL_ENRICHMENT=false
 ```
@@ -200,13 +233,21 @@ This test verifies:
 - Integration with ClaimAgent
 - Input format correctness (with `type: "message"` fields)
 
-#### 2. Test Direct Model Setup (If Using API Key)
+#### 2. Test Embedding Setup (Required for RAG)
+
+```bash
+python scripts/test_embedding_setup.py
+```
+
+This test verifies your embedding endpoint and deployment are reachable and can generate vectors.
+
+#### 3. Test Direct Model Setup (If Using API Key)
 
 ```bash
 python scripts/test_api_key_setup.py
 ```
 
-#### 3. Populate Evidence Database
+#### 4. Populate Evidence Database
 
 ```bash
 python scripts/populate_evidence.py
@@ -214,13 +255,13 @@ python scripts/populate_evidence.py
 
 This populates the ChromaDB vector store with evidence documents for RAG retrieval.
 
-#### 4. Run Unit Tests
+#### 5. Run Unit Tests
 
 ```bash
 pytest
 ```
 
-#### 5. Test API Endpoints
+#### 6. Test API Endpoints
 
 Start the server first (see [Running the Application](#running-the-application)), then test:
 
@@ -246,7 +287,7 @@ curl http://localhost:8000/api/metrics
 curl http://localhost:8000/api/reviews
 ```
 
-#### 6. Test Streamlit UI
+#### 7. Test Streamlit UI
 
 ```bash
 streamlit run streamlit_app.py
@@ -330,6 +371,12 @@ The Streamlit UI will open automatically in your browser at `http://localhost:85
 - Refresh credentials: `az account get-access-token --resource https://ai.azure.com`
 - Consider using API key approach as fallback
 
+**"Embedding 404" or "Deployment not found"**:
+- Run `python scripts/test_embedding_setup.py`
+- Confirm `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` exists
+- If using Foundry, set `AZURE_OPENAI_EMBEDDING_ENDPOINT` explicitly
+- Embeddings always require `AZURE_OPENAI_API_KEY`
+
 ### SDK & Dependencies
 
 **"Module not found: azure.ai.projects"**:
@@ -405,8 +452,8 @@ llm-decision-flow/
 │   │   └── main.py      # FastAPI app initialization
 │   └── governance/      # Governance and metrics
 ├── streamlit_app.py    # Streamlit UI application
-├── policies/            # Policy files
-├── data/                # Data and evidence
+├── policies/            # Policy files (local, not committed)
+├── data/                # Data and evidence (local, not committed)
 │   └── evidence/       # Evidence documents for RAG
 ├── scripts/             # Utility scripts
 │   ├── test_foundry_agent.py    # Test Foundry agent setup
