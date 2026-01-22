@@ -35,7 +35,9 @@ class EvidenceAgent(BaseAgent):
                 supporting=[],
                 contradicting=[],
                 evidence_confidence=0.0,
-                conflicts_present=False
+                conflicts_present=False,
+                evidence_gap=True,
+                evidence_gap_reason="No claims provided."
             )
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             detail = AgentExecutionDetail(

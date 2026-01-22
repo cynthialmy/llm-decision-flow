@@ -101,6 +101,9 @@ EVIDENCE_SIMILARITY_CUTOFF=0.4
 
 # External search allowlist (comma-separated domains)
 EXTERNAL_SEARCH_ALLOWLIST=gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com
+
+# Optional external enrichment (write external context into internal index)
+ALLOW_EXTERNAL_ENRICHMENT=false
 ```
 
 **How It Works**:
@@ -150,6 +153,7 @@ POLICY_CONFIDENCE_THRESHOLD=0.7
 NOVELTY_SIMILARITY_THRESHOLD=0.35
 EVIDENCE_SIMILARITY_CUTOFF=0.4
 EXTERNAL_SEARCH_ALLOWLIST=gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com
+ALLOW_EXTERNAL_ENRICHMENT=false
 ```
 
 **Note**: When using API keys, use the base endpoint format (without `/api/projects/`).

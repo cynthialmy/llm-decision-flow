@@ -74,12 +74,16 @@ class EvidenceRetriever:
             evidence_confidence = support_ratio * 0.8  # Cap at 0.8 to account for uncertainty
 
         conflicts_present = len(all_contradicting) > 0
+        evidence_gap = total_items == 0
+        evidence_gap_reason = "No matching internal evidence found." if evidence_gap else None
 
         return Evidence(
             supporting=all_supporting[:10],  # Limit to top 10
             contradicting=all_contradicting[:10],  # Limit to top 10
             evidence_confidence=evidence_confidence,
-            conflicts_present=conflicts_present
+            conflicts_present=conflicts_present,
+            evidence_gap=evidence_gap,
+            evidence_gap_reason=evidence_gap_reason
         )
 
     def _parse_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:

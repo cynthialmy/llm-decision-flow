@@ -78,6 +78,8 @@ class Evidence(BaseModel):
     contextual: List[EvidenceItem] = Field(default_factory=list, description="Context-only external evidence")
     evidence_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Overall evidence confidence")
     conflicts_present: bool = Field(False, description="Whether conflicting evidence exists")
+    evidence_gap: bool = Field(False, description="Whether internal evidence is missing")
+    evidence_gap_reason: Optional[str] = Field(None, description="Reason for missing evidence")
 
 
 class FactualityAssessment(BaseModel):

@@ -447,6 +447,8 @@ def main() -> None:
 
             st.subheader("Evidence & Factuality")
             if analysis.evidence:
+                if analysis.evidence.evidence_gap:
+                    st.warning(f"Evidence gap: {analysis.evidence.evidence_gap_reason or 'No internal evidence.'}")
                 st.markdown("Supporting evidence")
                 st.json([item.model_dump() for item in analysis.evidence.supporting])
                 st.markdown("Contradicting evidence")
@@ -480,6 +482,23 @@ def main() -> None:
         st.subheader("Recent Decisions")
         decisions = load_recent_decisions()
         if decisions:
+            st.markdown("**Evidence gaps (targeted enrichment)**")
+            gap_rows = []
+            for decision in decisions:
+                evidence = decision.evidence_json or {}
+                if evidence.get("evidence_gap"):
+                    gap_rows.append({
+                        "id": decision.id,
+                        "created_at": decision.created_at,
+                        "risk_tier": (decision.risk_assessment_json or {}).get("tier"),
+                        "reason": evidence.get("evidence_gap_reason") or "No internal evidence.",
+                        "claim_sample": (decision.claims_json or [{}])[0].get("text"),
+                    })
+            if gap_rows:
+                st.dataframe(gap_rows, width="stretch")
+            else:
+                st.caption("No evidence gaps found in recent decisions.")
+
             decision_rows = [
                 {
                     "id": d.id,

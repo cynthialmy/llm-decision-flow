@@ -262,7 +262,15 @@ class DecisionOrchestrator:
     @staticmethod
     def _attach_external_context(evidence: Optional[Evidence], claims: list[Claim]) -> Evidence:
         if evidence is None:
-            evidence = Evidence(supporting=[], contradicting=[], contextual=[], evidence_confidence=0.0, conflicts_present=False)
+            evidence = Evidence(
+                supporting=[],
+                contradicting=[],
+                contextual=[],
+                evidence_confidence=0.0,
+                conflicts_present=False,
+                evidence_gap=True,
+                evidence_gap_reason="No internal evidence available."
+            )
         search_client = ExternalSearchClient()
         contextual_items = []
         for claim in claims[:3]:
@@ -279,4 +287,28 @@ class DecisionOrchestrator:
 
         for item in contextual_items:
             evidence.contextual.append(EvidenceItem(**item))
+
+        if evidence.supporting == [] and evidence.contradicting == []:
+            evidence.evidence_gap = True
+            evidence.evidence_gap_reason = evidence.evidence_gap_reason or "No supporting or contradicting internal evidence."
+
+        if settings.allow_external_enrichment and contextual_items:
+            vector_store = VectorStore()
+            docs = [item["text"] for item in contextual_items if item.get("text")]
+            metadatas = [
+                {
+                    "source": item.get("source", "external"),
+                    "domain": "external",
+                    "quality": "context",
+                    "timestamp": None,
+                    "index_version": settings.evidence_index_version,
+                    "origin": "external_search",
+                }
+                for item in contextual_items if item.get("text")
+            ]
+            if docs:
+                try:
+                    vector_store.add_documents(docs, metadatas=metadatas)
+                except ValueError:
+                    pass
         return evidence

@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     # External Search Controls
     allow_external_search: bool = True
     external_search_allowlist: str = "gov,edu,who.int,cdc.gov,nih.gov,factcheck.org,reuters.com,apnews.com"
+    allow_external_enrichment: bool = False
 
     # Governance + Quality Gates
     policy_version: str = "1.0"
