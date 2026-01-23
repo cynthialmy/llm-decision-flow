@@ -15,6 +15,38 @@ This system uses:
 
 ---
 
+## Decision Flow Reference
+
+```mermaid
+flowchart TD
+    Transcript["UserInput Transcript"] --> ClaimAgent["ClaimAgent (Groq)"]
+    ClaimAgent --> ClaimsCache[ClaimsCache]
+    ClaimsCache --> RiskSLM["RiskSLM (Zentropi)"]
+    RiskSLM -->|"Fallback"| RiskFallback["RiskFallback (Frontier)"]
+    RiskSLM -->|"SLM"| RiskAgent[RiskDecision]
+    RiskFallback --> RiskAgent
+
+    RiskAgent -->|"HighOrMediumRisk"| EvidenceAgent["EvidenceAgent (RAG)"]
+    EvidenceAgent -->|"HighNovelty"| ExternalSearch["ExternalSearch (Allowlist)"]
+    ExternalSearch -->|"Context"| PolicySLM["PolicySLM (Zentropi)"]
+    EvidenceAgent --> FactualityAgent["FactualityAgent (Frontier)"]
+    FactualityAgent --> PolicySLM
+
+    RiskAgent -->|"LowRisk"| PolicySLM
+    PolicySLM -->|"Fallback"| PolicyFallback["PolicyFallback (Frontier)"]
+    PolicySLM -->|"SLM"| PolicyAgent[PolicyDecision]
+    PolicyFallback --> PolicyAgent
+
+    PolicyAgent --> QualityGate[QualityGates]
+    QualityGate --> DecisionOrch[DecisionOrchestrator]
+    DecisionOrch -->|"Escalate"| HumanReview[HumanReviewInterface]
+    DecisionOrch -->|"Auto"| Governance[GovernanceLog]
+    HumanReview --> Governance
+    Governance --> Metrics[MetricsDashboard]
+```
+
+---
+
 ## 1. Groq API (Claim Extraction)
 
 ### Role in This System

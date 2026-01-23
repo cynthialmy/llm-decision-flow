@@ -1268,168 +1268,160 @@ def main() -> None:
                 with st.expander("System Change Proposal (Optional)", expanded=False):
                     st.markdown("Propose changes to system behavior based on this review.")
 
-                prompt_overrides = get_prompt_overrides()
-                current_prompts = get_prompt_texts(prompt_overrides)
-                current_thresholds = get_thresholds_with_overrides()
-                current_weightings = get_weightings_with_overrides()
+                    prompt_overrides = get_prompt_overrides()
+                    current_prompts = get_prompt_texts(prompt_overrides)
+                    current_thresholds = get_thresholds_with_overrides()
+                    current_weightings = get_weightings_with_overrides()
 
-                st.markdown("**Current Configuration (Reference)**")
-                with st.expander("Current prompts", expanded=False):
-                    st.json(current_prompts)
-                with st.expander("Current thresholds", expanded=False):
-                    st.json(current_thresholds)
-                with st.expander("Current weightings", expanded=False):
-                    st.json(current_weightings)
-
-                st.markdown("**Agent Prompt Editor**")
-                agent_labels = {
-                    "claim": "Claim Agent",
-                    "risk": "Risk Agent",
-                    "factuality": "Factuality Agent",
-                    "policy": "Policy Agent",
-                }
-                agent_key = st.selectbox(
-                    "Select agent to edit",
-                    options=list(agent_labels.keys()),
-                    format_func=lambda key: agent_labels.get(key, key),
-                )
-
-                current_agent_prompts = current_prompts.get(agent_key, {})
-                current_system_prompt = current_agent_prompts.get("system_prompt", "")
-                current_user_prompt = current_agent_prompts.get("user_prompt", "")
-
-                sys_col_current, sys_col_edit = st.columns(2)
-                with sys_col_current:
-                    st.text_area(
-                        "Current system prompt",
-                        value=current_system_prompt,
-                        height=200,
-                        disabled=True,
-                        key=f"current_system_{agent_key}",
-                    )
-                with sys_col_edit:
-                    edited_system_prompt = st.text_area(
-                        "Edit system prompt",
-                        value=current_system_prompt,
-                        height=200,
-                        key=f"edit_system_{agent_key}",
+                    st.markdown("**Agent Prompt Editor**")
+                    agent_labels = {
+                        "claim": "Claim Agent",
+                        "risk": "Risk Agent",
+                        "factuality": "Factuality Agent",
+                        "policy": "Policy Agent",
+                    }
+                    agent_key = st.selectbox(
+                        "Select agent to edit",
+                        options=list(agent_labels.keys()),
+                        format_func=lambda key: agent_labels.get(key, key),
                     )
 
-                user_col_current, user_col_edit = st.columns(2)
-                with user_col_current:
-                    st.text_area(
-                        "Current user prompt",
-                        value=current_user_prompt,
-                        height=200,
-                        disabled=True,
-                        key=f"current_user_{agent_key}",
-                    )
-                with user_col_edit:
-                    edited_user_prompt = st.text_area(
-                        "Edit user prompt",
-                        value=current_user_prompt,
-                        height=200,
-                        key=f"edit_user_{agent_key}",
-                    )
+                    current_agent_prompts = current_prompts.get(agent_key, {})
+                    current_system_prompt = current_agent_prompts.get("system_prompt", "")
+                    current_user_prompt = current_agent_prompts.get("user_prompt", "")
 
-                st.markdown("**Bulk JSON Edits**")
-                prompt_col_current, prompt_col_edit = st.columns(2)
-                with prompt_col_current:
-                    st.text_area(
-                        "Current prompt JSON",
-                        value=json.dumps(current_prompts, indent=2),
-                        height=220,
-                        disabled=True,
-                        key="current_prompts_json",
-                    )
-                with prompt_col_edit:
-                    prompt_updates = st.text_area(
-                        "Prompt Updates (JSON)",
-                        height=220,
-                        help='JSON object keyed by agent: {"claim": {"system_prompt": "...", "user_prompt": "..."}}',
-                        value=json.dumps(current_prompts, indent=2),
-                        key="prompt_updates_json",
-                    )
+                    sys_col_current, sys_col_edit = st.columns(2)
+                    with sys_col_current:
+                        st.text_area(
+                            "Current system prompt",
+                            value=current_system_prompt,
+                            height=200,
+                            disabled=True,
+                            key=f"current_system_{agent_key}",
+                        )
+                    with sys_col_edit:
+                        edited_system_prompt = st.text_area(
+                            "Edit system prompt",
+                            value=current_system_prompt,
+                            height=200,
+                            key=f"edit_system_{agent_key}",
+                        )
 
-                threshold_col_current, threshold_col_edit = st.columns(2)
-                with threshold_col_current:
-                    st.text_area(
-                        "Current thresholds JSON",
-                        value=json.dumps(current_thresholds, indent=2),
-                        height=160,
-                        disabled=True,
-                        key="current_thresholds_json",
-                    )
-                with threshold_col_edit:
-                    threshold_updates = st.text_area(
-                        "Threshold Updates (JSON)",
-                        height=160,
-                        help='JSON object with threshold names and values, e.g. {"risk_confidence_threshold": 0.8}',
-                        value=json.dumps(current_thresholds, indent=2),
-                        key="threshold_updates_json",
-                    )
+                    user_col_current, user_col_edit = st.columns(2)
+                    with user_col_current:
+                        st.text_area(
+                            "Current user prompt",
+                            value=current_user_prompt,
+                            height=200,
+                            disabled=True,
+                            key=f"current_user_{agent_key}",
+                        )
+                    with user_col_edit:
+                        edited_user_prompt = st.text_area(
+                            "Edit user prompt",
+                            value=current_user_prompt,
+                            height=200,
+                            key=f"edit_user_{agent_key}",
+                        )
 
-                st.caption("Weightings are evidence source multipliers (e.g., authoritative > external).")
-                weighting_col_current, weighting_col_edit = st.columns(2)
-                with weighting_col_current:
-                    st.text_area(
-                        "Current weightings JSON",
-                        value=json.dumps(current_weightings, indent=2),
-                        height=140,
-                        disabled=True,
-                        key="current_weightings_json",
-                    )
-                with weighting_col_edit:
-                    weighting_updates = st.text_area(
-                        "Evidence source weights (JSON)",
-                        height=140,
-                        help='JSON object with source weights, e.g. {"authoritative": 1.2, "external": 0.9}',
-                        value=json.dumps(current_weightings, indent=2),
-                        key="weighting_updates_json",
-                    )
+                    st.markdown("**Bulk JSON Edits**")
+                    prompt_col_current, prompt_col_edit = st.columns(2)
+                    with prompt_col_current:
+                        st.text_area(
+                            "Current prompt JSON",
+                            value=json.dumps(current_prompts, indent=2),
+                            height=220,
+                            disabled=True,
+                            key="current_prompts_json",
+                        )
+                    with prompt_col_edit:
+                        prompt_updates = st.text_area(
+                            "Prompt Updates (JSON)",
+                            height=220,
+                            help='JSON object keyed by agent: {"claim": {"system_prompt": "...", "user_prompt": "..."}}',
+                            value=json.dumps(current_prompts, indent=2),
+                            key="prompt_updates_json",
+                        )
 
-                    change_rationale = st.text_area(
-                        "Change Rationale",
-                        height=60,
-                        help="Explain why these changes are needed"
-                    )
+                    threshold_col_current, threshold_col_edit = st.columns(2)
+                    with threshold_col_current:
+                        st.text_area(
+                            "Current thresholds JSON",
+                            value=json.dumps(current_thresholds, indent=2),
+                            height=160,
+                            disabled=True,
+                            key="current_thresholds_json",
+                        )
+                    with threshold_col_edit:
+                        threshold_updates = st.text_area(
+                            "Threshold Updates (JSON)",
+                            height=160,
+                            help='JSON object with threshold names and values, e.g. {"risk_confidence_threshold": 0.8}',
+                            value=json.dumps(current_thresholds, indent=2),
+                            key="threshold_updates_json",
+                        )
 
-                    proposed_change = None
-                    if prompt_updates or threshold_updates or weighting_updates or change_rationale:
-                        try:
-                            prompt_dict = json.loads(prompt_updates) if prompt_updates.strip() else {}
-                            threshold_dict = json.loads(threshold_updates) if threshold_updates.strip() else {}
-                            weighting_dict = json.loads(weighting_updates) if weighting_updates.strip() else {}
+                    st.caption("Weightings are evidence source multipliers (e.g., authoritative > external).")
+                    weighting_col_current, weighting_col_edit = st.columns(2)
+                    with weighting_col_current:
+                        st.text_area(
+                            "Current weightings JSON",
+                            value=json.dumps(current_weightings, indent=2),
+                            height=140,
+                            disabled=True,
+                            key="current_weightings_json",
+                        )
+                    with weighting_col_edit:
+                        weighting_updates = st.text_area(
+                            "Evidence source weights (JSON)",
+                            height=140,
+                            help='JSON object with source weights, e.g. {"authoritative": 1.2, "external": 0.9}',
+                            value=json.dumps(current_weightings, indent=2),
+                            key="weighting_updates_json",
+                        )
 
-                            if prompt_dict == current_prompts:
-                                prompt_dict = {}
-                            if threshold_dict == current_thresholds:
-                                threshold_dict = {}
-                            if weighting_dict == current_weightings:
-                                weighting_dict = {}
+                        change_rationale = st.text_area(
+                            "Change Rationale",
+                            height=60,
+                            help="Explain why these changes are needed"
+                        )
 
-                            agent_updates = {}
-                            if edited_system_prompt.strip() and edited_system_prompt != current_system_prompt:
-                                agent_updates["system_prompt"] = edited_system_prompt
-                            if edited_user_prompt.strip() and edited_user_prompt != current_user_prompt:
-                                agent_updates["user_prompt"] = edited_user_prompt
-                            if agent_updates:
-                                prompt_dict = prompt_dict if isinstance(prompt_dict, dict) else {}
-                                prompt_dict[agent_key] = {
-                                    **(prompt_dict.get(agent_key, {}) if isinstance(prompt_dict.get(agent_key), dict) else {}),
-                                    **agent_updates,
-                                }
+                        proposed_change = None
+                        if prompt_updates or threshold_updates or weighting_updates or change_rationale:
+                            try:
+                                prompt_dict = json.loads(prompt_updates) if prompt_updates.strip() else {}
+                                threshold_dict = json.loads(threshold_updates) if threshold_updates.strip() else {}
+                                weighting_dict = json.loads(weighting_updates) if weighting_updates.strip() else {}
 
-                            proposed_change = ChangeProposal(
-                                prompt_updates=prompt_dict if isinstance(prompt_dict, dict) else {},
-                                threshold_updates=threshold_dict if isinstance(threshold_dict, dict) else {},
-                                weighting_updates=weighting_dict if isinstance(weighting_dict, dict) else {},
-                                rationale=change_rationale if change_rationale.strip() else None
-                            )
-                        except json.JSONDecodeError as e:
-                            st.warning(f"Invalid JSON in change proposal: {e}")
-                        except Exception as e:
-                            st.warning(f"Error creating change proposal: {e}")
+                                if prompt_dict == current_prompts:
+                                    prompt_dict = {}
+                                if threshold_dict == current_thresholds:
+                                    threshold_dict = {}
+                                if weighting_dict == current_weightings:
+                                    weighting_dict = {}
+
+                                agent_updates = {}
+                                if edited_system_prompt.strip() and edited_system_prompt != current_system_prompt:
+                                    agent_updates["system_prompt"] = edited_system_prompt
+                                if edited_user_prompt.strip() and edited_user_prompt != current_user_prompt:
+                                    agent_updates["user_prompt"] = edited_user_prompt
+                                if agent_updates:
+                                    prompt_dict = prompt_dict if isinstance(prompt_dict, dict) else {}
+                                    prompt_dict[agent_key] = {
+                                        **(prompt_dict.get(agent_key, {}) if isinstance(prompt_dict.get(agent_key), dict) else {}),
+                                        **agent_updates,
+                                    }
+
+                                proposed_change = ChangeProposal(
+                                    prompt_updates=prompt_dict if isinstance(prompt_dict, dict) else {},
+                                    threshold_updates=threshold_dict if isinstance(threshold_dict, dict) else {},
+                                    weighting_updates=weighting_dict if isinstance(weighting_dict, dict) else {},
+                                    rationale=change_rationale if change_rationale.strip() else None
+                                )
+                            except json.JSONDecodeError as e:
+                                st.warning(f"Invalid JSON in change proposal: {e}")
+                            except Exception as e:
+                                st.warning(f"Error creating change proposal: {e}")
 
                 accepted_change = proposed_change
 
