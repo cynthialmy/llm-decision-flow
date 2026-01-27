@@ -464,6 +464,8 @@ Nested keys are mapped to `AZURE_OPENAI_*` env vars (e.g. `azure.openai_api_key`
 
 **Optional secrets:** `GROQ_API_KEY`, `ZENTROPI_API_KEY`, `ZENTROPI_LABELER_ID`, `ZENTROPI_LABELER_VERSION_ID`, `SERPER_API_KEY`.
 
+**If you see `KeyError: 'src'` or `KeyError: 'src.models.schemas'` on Cloud:** The app now adds the project root to `sys.path` at the very start of `streamlit_app.py`, so `import src...` should resolve. If it still fails, set **Main file path** in the app’s Cloud settings to `streamlit_app.py` (not a path like `some_folder/streamlit_app.py`) so the working directory is the repo root where `src/` lives.
+
 **Build / runtime:** Use `requirements-cloud.txt` and Python 3.11 or 3.12 if your platform allows (3.13 is supported with the versions in `requirements-cloud.txt`).
 
 ---

@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Ensure project root is on Python path (Streamlit Cloud may run from a different context)
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
 from typing import List, Optional, Dict, Any
 import tempfile
 import json
