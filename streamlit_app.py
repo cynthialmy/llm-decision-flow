@@ -83,23 +83,24 @@ def _azure_openai_404_hints() -> List[str]:
 def _show_streamlit_cloud_azure_help() -> None:
     """Show Streamlit Cloud + Azure OpenAI setup instructions in an expander."""
     with st.expander("How to fix: Streamlit Cloud + Azure OpenAI", expanded=True):
-        st.markdown("**404 usually means:**")
-        st.markdown(
-            "- **Wrong endpoint**: Use the **base** URL only: `https://YOUR-RESOURCE.openai.azure.com/` "
-            "— not a Foundry URL (`.../api/projects/...`) and no `/openai/deployments/...` path.\n"
-            "- **Wrong deployment name**: Copy it exactly from Azure Portal → your resource → **Deployments** "
-            "(e.g. `gpt-4o` or `gpt-4`)."
+        st.info(
+            "**Local vs Cloud:** Locally the app reads from `.env`. On Streamlit Cloud, `.env` is not deployed "
+            "(it's in `.gitignore`), so the app only sees **Settings → Secrets**. Paste the same keys/values from your "
+            ".env into the app's **Settings → Secrets** as TOML."
         )
-        st.markdown("**In Streamlit Cloud:** add these in your app **Settings → Secrets** (paste as TOML):")
+        st.markdown("**404 usually means:** wrong deployment name, or Secrets not set on Cloud (because .env is ignored).")
+        st.markdown(
+            "**In Streamlit Cloud:** open your app → ⋮ **Settings** → **Secrets** → paste the same keys as in your .env (as TOML):"
+        )
         st.code(
+            'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.services.ai.azure.com/"\n'
             'AZURE_OPENAI_API_KEY = "your-api-key"\n'
-            'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/"\n'
             'AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o"\n'
             'AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-ada-002"\n'
-            'AZURE_OPENAI_API_VERSION = "2024-02-15-preview"',
+            'AZURE_OPENAI_API_VERSION = "2024-11-20"',
             language="toml",
         )
-        st.caption("See SETUP.md → Streamlit Community Cloud for the full list.")
+        st.caption("Use your exact endpoint (e.g. `...services.ai.azure.com/` or `...openai.azure.com/`), deployment name, and API version from Azure Portal.")
 
 
 def load_policy_text() -> str:

@@ -418,40 +418,49 @@ Make sure to set these in your cloud platform's environment variables:
 
 ### Streamlit Community Cloud
 
-When deploying to **Streamlit Community Cloud**, the app reads configuration from **Secrets**. Add your secrets in the app's **Settings → Secrets** (or paste TOML in "Advanced settings" during deploy). The app injects these into the environment before loading config.
+**Why it works locally but not on Cloud:** Locally the app reads from your **`.env`** file. On Streamlit Cloud, **`.env` is not deployed** (it’s in `.gitignore`), so the app never sees it. Cloud config comes only from **Settings → Secrets**. If your secrets are “the same” as in `.env`, you must paste them into the app’s **Settings → Secrets** as TOML. The app copies those into the environment at startup.
+
+When deploying to **Streamlit Community Cloud**, add your secrets in the app’s **Settings → Secrets** (or paste TOML in “Advanced settings” during deploy). The app injects these into the environment before loading config.
 
 **Required secrets (when using Azure OpenAI with API key):**
 
-Use the **exact deployment name** from Azure Portal → your resource → **Deployments**. Use the **base endpoint** (e.g. `https://YOUR-RESOURCE.openai.azure.com/`), not a Foundry project URL.
+Use the **exact deployment name** from Azure Portal → your resource → **Deployments**. Use the **base endpoint** with no extra path, e.g.:
+
+- `https://YOUR-RESOURCE.openai.azure.com/` or  
+- `https://YOUR-RESOURCE.services.ai.azure.com/`
+
+Do not use a Foundry project URL (`.../api/projects/...`) unless you use Foundry agents.
 
 **Option A – flat TOML (recommended):**
 
 ```toml
+AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.services.ai.azure.com/"
 AZURE_OPENAI_API_KEY = "your-api-key"
-AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/"
 AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o"
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-ada-002"
-AZURE_OPENAI_API_VERSION = "2024-02-15-preview"
+AZURE_OPENAI_API_VERSION = "2024-11-20"
 ```
+
+Use your real endpoint (e.g. `https://support-8844-resource.services.ai.azure.com/`), deployment name, and API version from Azure.
 
 **Option B – nested TOML:**
 
 ```toml
 [azure]
+openai_endpoint = "https://YOUR-RESOURCE.services.ai.azure.com/"
 openai_api_key = "your-api-key"
-openai_endpoint = "https://YOUR-RESOURCE.openai.azure.com/"
 openai_deployment_name = "gpt-4o"
 openai_embedding_deployment = "text-embedding-ada-002"
-openai_api_version = "2024-02-15-preview"
+openai_api_version = "2024-11-20"
 ```
 
 Nested keys are mapped to `AZURE_OPENAI_*` env vars (e.g. `azure.openai_api_key` → `AZURE_OPENAI_API_KEY`).
 
 **Common causes of "deployment not found" on Streamlit Cloud:**
 
-1. **Wrong endpoint** – With API key, use the **base** URL: `https://YOUR-RESOURCE.openai.azure.com/`. Do not use a Foundry project URL (`.../api/projects/...`) unless you use Foundry agents.
-2. **Wrong deployment name** – It must match the deployment name in Azure Portal (e.g. `gpt-4o`, `gpt-4`, etc.).
-3. **Secrets not set** – Ensure all required keys are in **Settings → Secrets** and redeploy.
+1. **Secrets not set on Cloud** – `.env` is ignored on Cloud. Paste the same keys/values into **Settings → Secrets** (as TOML).
+2. **Wrong deployment name** – It must match exactly what you see in Azure Portal → your resource → **Deployments** (e.g. `gpt-4o`, `gpt-40`, `gpt-4`—no spaces, correct spelling).
+3. **Wrong endpoint** – Use the **base** URL only (e.g. `https://YOUR-RESOURCE.services.ai.azure.com/` or `https://YOUR-RESOURCE.openai.azure.com/`). No path like `/api/projects/...` or `/openai/deployments/...`.
 
 **Optional secrets:** `GROQ_API_KEY`, `ZENTROPI_API_KEY`, `ZENTROPI_LABELER_ID`, `ZENTROPI_LABELER_VERSION_ID`, `SERPER_API_KEY`.
 
