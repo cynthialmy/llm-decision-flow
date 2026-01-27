@@ -105,8 +105,9 @@ def _show_streamlit_cloud_azure_help() -> None:
             "**Deployment name must be exact:** In Azure Portal → your resource (**support-8844-resource**) → **Deployments** (or **Model deployments**), copy the **exact** name. It might be `gpt-4o`, `gpt-4o-01`, or something else—use what you see there. Same for embeddings."
         )
         st.markdown(
-            "**Endpoint on Cloud:** Use the **base** URL only: `https://YOUR-RESOURCE.openai.azure.com/` — **not** "
-            "`.../openai/v1/`. The SDK adds the path."
+            "**Endpoint on Cloud:** Try either (1) base URL: `https://YOUR-RESOURCE.openai.azure.com/` or "
+            "(2) OpenAI-compatible URL: `https://YOUR-RESOURCE.openai.azure.com/openai/v1/`. "
+            "If you get 404 with the base URL, use the `/openai/v1/` URL — it matches Azure's flat chat/completions style."
         )
         # Show what the app is actually using (so they can match Azure Portal)
         ep = (config.settings.azure_openai_endpoint or config.settings.azure_existing_aiproject_endpoint or "")
@@ -128,7 +129,8 @@ def _show_streamlit_cloud_azure_help() -> None:
             "**In Streamlit Cloud:** open your app → ⋮ **Settings** → **Secrets** → paste the same keys as in your .env (as TOML):"
         )
         st.code(
-            'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/"\n'
+            '# If 404 with base URL, try the OpenAI-compatible URL instead:\n'
+            'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/openai/v1/"\n'
             'AZURE_OPENAI_API_KEY = "your-api-key"\n'
             'AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o"\n'
             'AZURE_OPENAI_EMBEDDING_ENDPOINT = "https://YOUR-RESOURCE.cognitiveservices.azure.com"\n'

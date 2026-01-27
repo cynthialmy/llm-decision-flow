@@ -1,8 +1,8 @@
 """Configuration management for Azure OpenAI and Azure AI Foundry settings."""
 import os
-from typing import Optional
+from typing import Optional, Union
 from pydantic_settings import BaseSettings
-from openai import AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 
 # Try importing Foundry SDK (optional)
 try:
@@ -291,13 +291,14 @@ def get_foundry_agent_name() -> Optional[str]:
     return agent_id
 
 
-def get_azure_openai_client() -> AzureOpenAI:
+def get_azure_openai_client() -> Union[AzureOpenAI, OpenAI]:
     """Create and return Azure OpenAI client for chat completions.
 
     Works with both Azure OpenAI Service and Azure AI Foundry endpoints.
     For Foundry, uses AIProjectClient.get_openai_client() if available.
 
-    Supports both standard env vars and Foundry SDK env vars.
+    When AZURE_OPENAI_ENDPOINT is the OpenAI-compatible URL (e.g. .../openai/v1/),
+    uses the generic OpenAI client so requests match Azure's flat /openai/v1/chat/completions style.
     """
     # Get endpoint (support Foundry env var names)
     endpoint = settings.azure_openai_endpoint or settings.azure_existing_aiproject_endpoint
@@ -309,6 +310,8 @@ def get_azure_openai_client() -> AzureOpenAI:
 
     # Clean up endpoint (remove quotes if present from env file)
     endpoint = endpoint.strip().strip('"').strip("'")
+    if not endpoint.endswith("/"):
+        endpoint = endpoint + "/"
 
     # Check if this is a Foundry project endpoint
     is_foundry_endpoint = '/api/projects/' in endpoint
@@ -331,6 +334,13 @@ def get_azure_openai_client() -> AzureOpenAI:
         raise ValueError(
             "AZURE_OPENAI_API_KEY is required for standard Azure OpenAI endpoints. "
             "For Foundry endpoints, make sure Foundry SDK is installed and you're logged in with 'az login'"
+        )
+
+    # OpenAI-compatible endpoint (e.g. .../openai/v1/) — use generic OpenAI client to match Azure's flat style
+    if ".openai.azure.com" in endpoint and "/openai/v1" in endpoint:
+        return OpenAI(
+            base_url=endpoint,
+            api_key=settings.azure_openai_api_key,
         )
 
     normalized_endpoint = _normalize_endpoint(endpoint)
