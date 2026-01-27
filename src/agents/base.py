@@ -177,6 +177,34 @@ class BaseAgent(ABC):
             logger.error(traceback.format_exc())
             raise
 
+    @staticmethod
+    def _extract_json_from_prose(text: str) -> str:
+        """Extract the first complete JSON object from prose (e.g. '...extracted:\n\n{ ... }\n\nNote...')."""
+        s = text.strip()
+        if not s:
+            return s
+        # Already fenced
+        if "```json" in s:
+            return s.split("```json", 1)[1].split("```")[0].strip()
+        if "```" in s:
+            return s.split("```", 1)[1].split("```")[0].strip()
+        # Pure JSON
+        if s.startswith("{"):
+            return s
+        # Find first { and then matching } by brace-counting
+        start = s.find("{")
+        if start < 0:
+            return s
+        depth = 0
+        for i in range(start, len(s)):
+            if s[i] == "{":
+                depth += 1
+            elif s[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    return s[start : i + 1]
+        return s[start:]
+
     def _parse_structured_output(
         self,
         response_text: str,
@@ -186,21 +214,10 @@ class BaseAgent(ABC):
         """
         Parse LLM response into structured Pydantic model.
 
-        Args:
-            response_text: Raw response text from LLM
-            output_model: Pydantic model class to parse into
-            retry_on_error: Whether to retry parsing if JSON parsing fails
-
-        Returns:
-            Parsed Pydantic model instance
+        Handles prose that wraps JSON (e.g. "The result is:\n\n{ ... }\n\nNote that...").
         """
         try:
-            # Try to extract JSON from response if it's wrapped in markdown
-            json_text = response_text.strip()
-            if "```json" in json_text:
-                json_text = json_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in json_text:
-                json_text = json_text.split("```")[1].split("```")[0].strip()
+            json_text = self._extract_json_from_prose(response_text.strip())
 
             # Parse JSON
             data = json.loads(json_text)
@@ -209,12 +226,11 @@ class BaseAgent(ABC):
             return output_model(**data)
         except (json.JSONDecodeError, ValidationError) as e:
             logger.error(f"Error parsing structured output: {e}")
-            logger.error(f"Response text: {response_text}")
+            logger.error(f"Response text: {response_text[:500]}...")
 
             if retry_on_error:
-                # Try to fix common JSON issues and retry once
                 try:
-                    # Remove trailing commas, fix quotes, etc.
+                    json_text = self._extract_json_from_prose(response_text.strip())
                     json_text = json_text.replace(",\n}", "\n}").replace(",\n]", "\n]")
                     data = json.loads(json_text)
                     return output_model(**data)
