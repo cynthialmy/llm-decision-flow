@@ -4,6 +4,35 @@ import tempfile
 import json
 
 import streamlit as st
+
+
+def _inject_streamlit_secrets_into_env() -> None:
+    """Copy Streamlit Cloud secrets into os.environ so pydantic-settings can read them.
+    Run before any code that loads src.config. Root-level TOML keys become env vars.
+    Use uppercase env names (e.g. AZURE_OPENAI_API_KEY) so config matches.
+    """
+    try:
+        secrets = getattr(st, "secrets", None)
+        if not secrets:
+            return
+        def _set_env(env_key: str, v: str) -> None:
+            ek = (env_key or "").upper().replace("-", "_")
+            if ek and isinstance(v, str) and ek not in os.environ:
+                os.environ[ek] = v
+        for key, value in secrets.items():
+            if isinstance(value, str):
+                _set_env(key, value)
+            elif isinstance(value, dict):
+                prefix = (str(key).upper().replace("-", "_") + "_") if key else ""
+                for k2, v2 in value.items():
+                    if isinstance(v2, str):
+                        _set_env(prefix + str(k2), v2)
+    except Exception:
+        pass
+
+
+_inject_streamlit_secrets_into_env()
+
 import matplotlib.pyplot as plt
 from pyvis.network import Network
 from sqlalchemy.orm import joinedload
@@ -28,6 +57,26 @@ from src.governance.system_config_store import (
 from src.agents.prompt_registry import get_prompt_texts
 from src.models.database import SessionLocal, DecisionRecord, ReviewRecord
 from src.rag.vector_store import VectorStore
+
+
+def _show_streamlit_cloud_azure_help() -> None:
+    """Show Streamlit Cloud + Azure OpenAI setup instructions in an expander."""
+    with st.expander("How to fix: Streamlit Cloud + Azure OpenAI", expanded=True):
+        st.markdown(
+            "1. **Endpoint** must be the **base** URL: `https://YOUR-RESOURCE.openai.azure.com/` "
+            "(not a Foundry project URL).\n"
+            "2. **Deployment name** must match Azure Portal → your resource → **Deployments** (e.g. `gpt-4o`).\n"
+            "3. Add these in your app **Settings → Secrets** (paste as TOML):"
+        )
+        st.code(
+            'AZURE_OPENAI_API_KEY = "your-api-key"\n'
+            'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/"\n'
+            'AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o"\n'
+            'AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-ada-002"\n'
+            'AZURE_OPENAI_API_VERSION = "2024-02-15-preview"',
+            language="toml",
+        )
+        st.caption("See SETUP.md → Streamlit Community Cloud for the full list.")
 
 
 def load_policy_text() -> str:
@@ -686,19 +735,41 @@ def main() -> None:
                 progress_bar.progress(completed / len(stage_order))
 
             render_stage_status()
-            orchestrator = DecisionOrchestrator()
-            st.session_state.analysis = orchestrator.analyze(
-                transcript,
-                progress_callback=progress_callback
-            )
-            progress_bar.progress(1.0)
-            # Persist governance trail for UI tabs
-            governance_logger = GovernanceLogger()
-            decision_id = governance_logger.log_decision(st.session_state.analysis, transcript)
-            if st.session_state.analysis.decision.requires_human_review:
-                pending_reviews = governance_logger.list_pending_reviews()
-                if pending_reviews:
-                    st.session_state.analysis.review_request_id = pending_reviews[-1].id
+            try:
+                orchestrator = DecisionOrchestrator()
+                st.session_state.analysis = orchestrator.analyze(
+                    transcript,
+                    progress_callback=progress_callback
+                )
+                progress_bar.progress(1.0)
+                # Persist governance trail for UI tabs
+                governance_logger = GovernanceLogger()
+                decision_id = governance_logger.log_decision(st.session_state.analysis, transcript)
+                if st.session_state.analysis.decision.requires_human_review:
+                    pending_reviews = governance_logger.list_pending_reviews()
+                    if pending_reviews:
+                        st.session_state.analysis.review_request_id = pending_reviews[-1].id
+            except ValueError as e:
+                progress_bar.progress(1.0)
+                st.session_state.analysis = None
+                st.error(str(e))
+                _show_streamlit_cloud_azure_help()
+                st.stop()
+            except Exception as e:
+                progress_bar.progress(1.0)
+                st.session_state.analysis = None
+                err_str = str(e).lower()
+                if "404" in err_str or "resource not found" in err_str or "notfound" in type(e).__name__.lower():
+                    st.error(
+                        "**Azure deployment not found (404).** "
+                        "Check that AZURE_OPENAI_DEPLOYMENT_NAME matches your deployment in Azure Portal "
+                        "and AZURE_OPENAI_ENDPOINT is the base URL (e.g. https://YOUR-RESOURCE.openai.azure.com/). "
+                        "On Streamlit Cloud, set these in Settings → Secrets."
+                    )
+                    _show_streamlit_cloud_azure_help()
+                else:
+                    st.exception(e)
+                st.stop()
 
         analysis: Optional[AnalysisResponse] = st.session_state.analysis
 

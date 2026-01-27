@@ -416,6 +416,47 @@ Make sure to set these in your cloud platform's environment variables:
 - `ZENTROPI_API_KEY` (for SLM routing)
 - `SERPER_API_KEY` (for external search)
 
+### Streamlit Community Cloud
+
+When deploying to **Streamlit Community Cloud**, the app reads configuration from **Secrets**. Add your secrets in the app's **Settings → Secrets** (or paste TOML in "Advanced settings" during deploy). The app injects these into the environment before loading config.
+
+**Required secrets (when using Azure OpenAI with API key):**
+
+Use the **exact deployment name** from Azure Portal → your resource → **Deployments**. Use the **base endpoint** (e.g. `https://YOUR-RESOURCE.openai.azure.com/`), not a Foundry project URL.
+
+**Option A – flat TOML (recommended):**
+
+```toml
+AZURE_OPENAI_API_KEY = "your-api-key"
+AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/"
+AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o"
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-ada-002"
+AZURE_OPENAI_API_VERSION = "2024-02-15-preview"
+```
+
+**Option B – nested TOML:**
+
+```toml
+[azure]
+openai_api_key = "your-api-key"
+openai_endpoint = "https://YOUR-RESOURCE.openai.azure.com/"
+openai_deployment_name = "gpt-4o"
+openai_embedding_deployment = "text-embedding-ada-002"
+openai_api_version = "2024-02-15-preview"
+```
+
+Nested keys are mapped to `AZURE_OPENAI_*` env vars (e.g. `azure.openai_api_key` → `AZURE_OPENAI_API_KEY`).
+
+**Common causes of "deployment not found" on Streamlit Cloud:**
+
+1. **Wrong endpoint** – With API key, use the **base** URL: `https://YOUR-RESOURCE.openai.azure.com/`. Do not use a Foundry project URL (`.../api/projects/...`) unless you use Foundry agents.
+2. **Wrong deployment name** – It must match the deployment name in Azure Portal (e.g. `gpt-4o`, `gpt-4`, etc.).
+3. **Secrets not set** – Ensure all required keys are in **Settings → Secrets** and redeploy.
+
+**Optional secrets:** `GROQ_API_KEY`, `ZENTROPI_API_KEY`, `ZENTROPI_LABELER_ID`, `ZENTROPI_LABELER_VERSION_ID`, `SERPER_API_KEY`.
+
+**Build / runtime:** Use `requirements-cloud.txt` and Python 3.11 or 3.12 if your platform allows (3.13 is supported with the versions in `requirements-cloud.txt`).
+
 ---
 
 ## Troubleshooting
@@ -439,6 +480,12 @@ Make sure to set these in your cloud platform's environment variables:
 - Confirm `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` exists
 - If using Foundry, set `AZURE_OPENAI_EMBEDDING_ENDPOINT` explicitly
 - Embeddings always require `AZURE_OPENAI_API_KEY`
+
+**"Deployment not found" or `openai.NotFoundError` on Streamlit Cloud**:
+- The app will show a clear message: check **AZURE_OPENAI_DEPLOYMENT_NAME** and **AZURE_OPENAI_ENDPOINT** in **Settings → Secrets**.
+- **Endpoint**: When using API key, use the **base** URL (e.g. `https://YOUR-RESOURCE.openai.azure.com/`). Do not use a Foundry project URL (`.../api/projects/...`) unless you use Foundry agents.
+- **Deployment name**: Must exactly match the deployment name in Azure Portal (e.g. `gpt-4o`, `gpt-4`). Copy it from Azure Portal → your resource → Deployments.
+- See [Streamlit Community Cloud](#streamlit-community-cloud) above for the exact TOML to paste in Secrets.
 
 ### SDK & Dependencies
 

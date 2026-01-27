@@ -5,7 +5,7 @@ import time
 import json
 import logging
 import hashlib
-from openai import AzureOpenAI
+from openai import AzureOpenAI, NotFoundError as OpenAINotFoundError
 from pydantic import BaseModel, ValidationError
 from src.config import get_azure_openai_client, settings, get_foundry_project_client, get_foundry_agent_name
 
@@ -93,6 +93,13 @@ class BaseAgent(ABC):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
+        _NOT_FOUND_MSG = (
+            "Azure reported 'deployment not found'. "
+            "Check that AZURE_OPENAI_DEPLOYMENT_NAME exactly matches your deployment in Azure Portal, "
+            "and that AZURE_OPENAI_ENDPOINT is the base URL (e.g. https://YOUR-RESOURCE.openai.azure.com/). "
+            "On Streamlit Cloud, set these in your app's Settings → Secrets. "
+            "See SETUP.md → Streamlit Cloud for the full list."
+        )
         try:
             response = self.client.chat.completions.create(
                 model=self.deployment_name,
@@ -103,7 +110,14 @@ class BaseAgent(ABC):
                 timeout=settings.frontier_timeout_s
             )
             return response.choices[0].message.content or ""
+        except OpenAINotFoundError as e:
+            logger.error(f"Azure OpenAI deployment not found: {e}")
+            raise ValueError(_NOT_FOUND_MSG) from e
         except Exception as e:
+            err_str = str(e).lower()
+            if "404" in err_str or "resource not found" in err_str or getattr(e, "status_code", None) == 404:
+                logger.error(f"Azure OpenAI deployment not found (404): {e}")
+                raise ValueError(_NOT_FOUND_MSG) from e
             logger.error(f"Error calling Azure OpenAI API: {e}")
             raise
 
