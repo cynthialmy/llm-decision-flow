@@ -73,6 +73,11 @@ def _azure_openai_404_hints() -> List[str]:
     dep = (config.settings.azure_openai_deployment_name or "").strip()
     if not ep and not dep:
         return hints
+    if "/openai/v1" in ep and ".openai.azure.com" in ep:
+        hints.append(
+            "Endpoint contains **/openai/v1/** — use the **base** URL only: "
+            "`https://YOUR-RESOURCE.openai.azure.com/`. The SDK adds the path."
+        )
     if "/api/projects/" in ep and config.settings.azure_openai_api_key:
         hints.append(
             "Endpoint is a **Foundry project URL**. For API-key auth use the **base** URL: "
@@ -82,7 +87,7 @@ def _azure_openai_404_hints() -> List[str]:
         hints.append("Deployment name must not contain spaces; use the exact name from Azure Portal.")
     if not dep and config.settings.azure_openai_api_key:
         hints.append("AZURE_OPENAI_DEPLOYMENT_NAME is missing. Set it to your deployment name (e.g. gpt-4o).")
-    if ep and not ep.endswith("/") and ".openai.azure.com" in ep:
+    if ep and not ep.endswith("/") and ".openai.azure.com" in ep and "/openai/v1" not in ep:
         hints.append("Endpoint should end with a slash: `https://YOUR-RESOURCE.openai.azure.com/`")
     return hints
 
@@ -95,19 +100,24 @@ def _show_streamlit_cloud_azure_help() -> None:
             "(it's in `.gitignore`), so the app only sees **Settings → Secrets**. Paste the same keys/values from your "
             ".env into the app's **Settings → Secrets** as TOML."
         )
-        st.markdown("**404 usually means:** wrong deployment name, or Secrets not set on Cloud (because .env is ignored).")
+        st.markdown("**404 usually means:** wrong deployment name, wrong endpoint URL, or Secrets not set on Cloud.")
+        st.markdown(
+            "**Endpoint on Cloud:** Use the **base** URL only: `https://YOUR-RESOURCE.openai.azure.com/` — **not** "
+            "`.../openai/v1/`. The SDK adds the path. If you paste `.../openai/v1/`, the app strips it automatically."
+        )
         st.markdown(
             "**In Streamlit Cloud:** open your app → ⋮ **Settings** → **Secrets** → paste the same keys as in your .env (as TOML):"
         )
         st.code(
-            'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.services.ai.azure.com/"\n'
+            'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/"\n'
             'AZURE_OPENAI_API_KEY = "your-api-key"\n'
             'AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o"\n'
+            'AZURE_OPENAI_EMBEDDING_ENDPOINT = "https://YOUR-RESOURCE.cognitiveservices.azure.com"\n'
             'AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-ada-002"\n'
             'AZURE_OPENAI_API_VERSION = "2024-11-20"',
             language="toml",
         )
-        st.caption("Use your exact endpoint (e.g. `...services.ai.azure.com/` or `...openai.azure.com/`), deployment name, and API version from Azure Portal.")
+        st.caption("Use your exact base endpoint (`...openai.azure.com/` for chat), deployment name, and API version from Azure Portal.")
 
 
 def load_policy_text() -> str:

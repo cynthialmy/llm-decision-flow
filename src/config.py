@@ -116,18 +116,24 @@ def _normalize_endpoint(endpoint: str) -> str:
     - Foundry project endpoint: https://...services.ai.azure.com/api/projects/...
     - Foundry base endpoint: https://...services.ai.azure.com/
     - Standard Azure OpenAI: https://...openai.azure.com/
+    - OpenAI-compatible full path (wrong for AzureOpenAI SDK): ...openai.azure.com/openai/v1/
+      → stripped to resource base so the SDK can append /openai/deployments/... correctly.
     """
-    endpoint = endpoint.strip()
+    endpoint = endpoint.strip().strip('"').strip("'")
 
-    # Remove trailing slash
+    # Remove trailing slash for parsing
     if endpoint.endswith('/'):
         endpoint = endpoint[:-1]
 
     # If it's a project endpoint, extract base endpoint
     if '/api/projects/' in endpoint:
-        # Extract base endpoint from project endpoint
         base = endpoint.split('/api/projects/')[0]
         return base + '/'
+
+    # Azure OpenAI SDK expects base URL only. Passing .../openai/v1/ causes 404 because
+    # the SDK appends /openai/deployments/{name}/... and the path becomes wrong.
+    if '.openai.azure.com' in endpoint and '/openai/v1' in endpoint:
+        endpoint = endpoint.split('/openai/v1')[0]
 
     # Ensure ends with /
     if not endpoint.endswith('/'):

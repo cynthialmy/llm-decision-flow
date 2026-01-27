@@ -460,7 +460,7 @@ Nested keys are mapped to `AZURE_OPENAI_*` env vars (e.g. `azure.openai_api_key`
 
 1. **Secrets not set on Cloud** – `.env` is ignored on Cloud. Paste the same keys/values into **Settings → Secrets** (as TOML).
 2. **Wrong deployment name** – It must match exactly what you see in Azure Portal → your resource → **Deployments** (e.g. `gpt-4o`, `gpt-40`, `gpt-4`—no spaces, correct spelling).
-3. **Wrong endpoint** – Use the **base** URL only (e.g. `https://YOUR-RESOURCE.services.ai.azure.com/` or `https://YOUR-RESOURCE.openai.azure.com/`). No path like `/api/projects/...` or `/openai/deployments/...`.
+3. **Wrong endpoint** – Use the **base** URL only: `https://YOUR-RESOURCE.openai.azure.com/` (or `...services.ai.azure.com/`). **Do not** use `.../openai/v1/` — the SDK adds the path and that URL causes 404. The app will strip `/openai/v1/` if you paste it by mistake.
 
 **Optional secrets:** `GROQ_API_KEY`, `ZENTROPI_API_KEY`, `ZENTROPI_LABELER_ID`, `ZENTROPI_LABELER_VERSION_ID`, `SERPER_API_KEY`.
 
