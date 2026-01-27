@@ -1,0 +1,24 @@
+# Cloud-friendly requirements file
+# This excludes pre-release packages that cloud platforms may not install by default
+# The application will work without Foundry SDK using API keys instead
+
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+sqlalchemy==2.0.23
+chromadb==0.4.18
+numpy<2.0.0  # ChromaDB 0.4.18 compatibility - NumPy 2.0 removed np.float_
+openai>=1.0.0,<2.0.0  # Foundry SDK compatibility - version 1.x works better
+httpx<0.27.0  # Foundry SDK compatibility - versions 0.27+ don't accept 'proxies' parameter
+python-dotenv==1.0.0
+python-multipart==0.0.6
+pytest==7.4.3
+streamlit>=1.28.0
+matplotlib>=3.7.0
+pyvis
+
+# Azure AI Foundry SDK (optional - excluded for cloud deployment)
+# If you need Foundry support, install separately after deployment:
+# pip install --pre azure-ai-projects>=2.0.0b1 azure-identity>=1.15.0
+# The application gracefully handles missing Foundry SDK and uses API keys instead

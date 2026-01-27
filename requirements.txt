@@ -14,6 +14,8 @@ streamlit>=1.28.0
 matplotlib>=3.7.0
 pyvis
 # Azure AI Foundry SDK (optional, for Foundry endpoints)
-# Note: Use --pre flag to install beta versions: pip install --pre azure-ai-projects
-azure-ai-projects>=2.0.0b1
-azure-identity>=1.15.0
+# Note: These are optional and only needed if using Foundry agents
+# Install separately with: pip install --pre azure-ai-projects>=2.0.0b1 azure-identity>=1.15.0
+# Cloud platforms: These packages are optional - the app works without them using API keys
+# azure-ai-projects>=2.0.0b1
+# azure-identity>=1.15.0

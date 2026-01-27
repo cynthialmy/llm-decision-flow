@@ -41,17 +41,33 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 ### 3. Install Dependencies
 
+**For Local Development:**
 ```bash
 pip install -r requirements.txt
 ```
 
+**For Cloud Deployment:**
+```bash
+pip install -r requirements-cloud.txt
+```
+
+**Optional: Install Foundry SDK (if using Foundry agents):**
+```bash
+# After installing base requirements, optionally install Foundry SDK
+pip install --pre azure-ai-projects>=2.0.0b1 azure-identity>=1.15.0
+# Or use the helper script:
+./install_foundry.sh
+```
+
 This installs all required packages including:
 - FastAPI and Uvicorn (web server)
-- Azure AI Foundry SDK (`azure-ai-projects`, `azure-identity`)
 - OpenAI SDK (for Azure OpenAI)
 - ChromaDB (vector database)
 - SQLAlchemy (database ORM)
 - Pydantic (data validation)
+- Azure AI Foundry SDK (`azure-ai-projects`, `azure-identity`) - **Optional**, only needed for Foundry agents
+
+**Note:** The Foundry SDK packages are optional. The application works without them using API keys instead. Cloud platforms may not install pre-release packages by default, so use `requirements-cloud.txt` for cloud deployments.
 
 ### 4. Create Local Data Folders
 
@@ -355,6 +371,51 @@ The Streamlit UI will open automatically in your browser at `http://localhost:85
 
 ---
 
+## Cloud Deployment
+
+### Using requirements-cloud.txt
+
+For cloud platforms (Railway, Render, Fly.io, Heroku, etc.), use `requirements-cloud.txt` instead of `requirements.txt`:
+
+```bash
+pip install -r requirements-cloud.txt
+```
+
+**Why?** Cloud platforms typically don't install pre-release packages by default. The `requirements-cloud.txt` file excludes the pre-release `azure-ai-projects` package, which is optional anyway.
+
+### Foundry SDK on Cloud
+
+If you need Foundry agent support on cloud:
+
+1. **Option 1: Install after deployment**
+   - Deploy with `requirements-cloud.txt`
+   - After deployment, SSH into your instance and run:
+     ```bash
+     pip install --pre azure-ai-projects>=2.0.0b1 azure-identity>=1.15.0
+     ```
+
+2. **Option 2: Use API keys instead**
+   - The application works perfectly fine without Foundry SDK
+   - Just configure `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_ENDPOINT` in your environment variables
+   - This is simpler and doesn't require Azure CLI authentication
+
+### Environment Variables for Cloud
+
+Make sure to set these in your cloud platform's environment variables:
+
+**Required (if not using Foundry):**
+- `AZURE_OPENAI_API_KEY`
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_DEPLOYMENT_NAME`
+- `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
+
+**Optional:**
+- `GROQ_API_KEY` (for faster claim extraction)
+- `ZENTROPI_API_KEY` (for SLM routing)
+- `SERPER_API_KEY` (for external search)
+
+---
+
 ## Troubleshooting
 
 ### Authentication & Credentials
@@ -380,9 +441,10 @@ The Streamlit UI will open automatically in your browser at `http://localhost:85
 ### SDK & Dependencies
 
 **"Module not found: azure.ai.projects"**:
-- Install Foundry SDK: `pip install --pre azure-ai-projects>=2.0.0b1`
-- Install Azure Identity: `pip install azure-identity`
-- Or reinstall all dependencies: `pip install -r requirements.txt`
+- This is expected if you're not using Foundry agents. The application works without it using API keys.
+- If you need Foundry support: `pip install --pre azure-ai-projects>=2.0.0b1 azure-identity>=1.15.0`
+- Or use the helper script: `./install_foundry.sh`
+- For cloud deployments, use `requirements-cloud.txt` which excludes pre-release packages
 
 **"Module not found" errors (general)**:
 - Make sure virtual environment is activated
