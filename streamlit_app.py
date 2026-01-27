@@ -42,7 +42,7 @@ from src.models.schemas import (
     AnalysisResponse, AgentExecutionDetail, RiskTier, DecisionAction, Decision,
     Claim, EvidenceItem, FactualityAssessment, SourceType, ReviewerFeedback, ChangeProposal, ReviewerAction
 )
-from src.config import settings
+from src import config
 from src.governance.metrics import MetricsCalculator
 from src.governance.logger import GovernanceLogger
 from src.governance.system_config_store import (
@@ -62,18 +62,18 @@ from src.rag.vector_store import VectorStore
 def _azure_openai_404_hints() -> List[str]:
     """Return hints when Azure config likely causes 404. Empty list = nothing obvious."""
     hints: List[str] = []
-    ep = (settings.azure_openai_endpoint or settings.azure_existing_aiproject_endpoint or "").strip()
-    dep = (settings.azure_openai_deployment_name or "").strip()
+    ep = (config.settings.azure_openai_endpoint or config.settings.azure_existing_aiproject_endpoint or "").strip()
+    dep = (config.settings.azure_openai_deployment_name or "").strip()
     if not ep and not dep:
         return hints
-    if "/api/projects/" in ep and settings.azure_openai_api_key:
+    if "/api/projects/" in ep and config.settings.azure_openai_api_key:
         hints.append(
             "Endpoint is a **Foundry project URL**. For API-key auth use the **base** URL: "
             "`https://YOUR-RESOURCE.openai.azure.com/` (no path)."
         )
     if dep and " " in dep:
         hints.append("Deployment name must not contain spaces; use the exact name from Azure Portal.")
-    if not dep and settings.azure_openai_api_key:
+    if not dep and config.settings.azure_openai_api_key:
         hints.append("AZURE_OPENAI_DEPLOYMENT_NAME is missing. Set it to your deployment name (e.g. gpt-4o).")
     if ep and not ep.endswith("/") and ".openai.azure.com" in ep:
         hints.append("Endpoint should end with a slash: `https://YOUR-RESOURCE.openai.azure.com/`")
@@ -104,7 +104,7 @@ def _show_streamlit_cloud_azure_help() -> None:
 
 
 def load_policy_text() -> str:
-    policy_path = settings.policy_file_path
+    policy_path = config.settings.policy_file_path
     if not policy_path:
         return "Policy path not configured."
     if not os.path.exists(policy_path):
@@ -696,6 +696,11 @@ def load_recent_reviews(limit: int = 20) -> List[ReviewRecord]:
 
 
 def main() -> None:
+    # Re-inject Streamlit secrets into env and reload config so Cloud sees them
+    # (secrets may be available only when main() runs, not at import time)
+    _inject_streamlit_secrets_into_env()
+    config.reload_settings_from_env()
+
     st.set_page_config(page_title="Agentic Factuality Evaluator", layout="wide")
     st.title("Agentic Factuality Evaluator")
     st.caption("Run the pipeline and inspect each agent's prompts, routing, and results.")
@@ -722,6 +727,11 @@ def main() -> None:
             for h in hints:
                 st.markdown(f"- {h}")
             _show_streamlit_cloud_azure_help()
+
+        # Show whether Azure config is present (so you can confirm Secrets reached the app on Cloud)
+        ep_ok = bool(config.settings.azure_openai_endpoint or config.settings.azure_existing_aiproject_endpoint)
+        dep_ok = bool(config.settings.azure_openai_deployment_name)
+        st.caption(f"Azure config: endpoint {'✓' if ep_ok else '✗'} · deployment {'✓' if dep_ok else '✗'} (if both ✗ on Cloud, Secrets are not reaching the app)")
 
         if run_analysis:
             stage_order = [
@@ -805,10 +815,10 @@ def main() -> None:
         analysis: Optional[AnalysisResponse] = st.session_state.analysis
 
         with st.expander("Provider Status", expanded=False):
-            zentropi_ready = bool(settings.zentropi_api_key and settings.zentropi_labeler_id and settings.zentropi_labeler_version_id)
+            zentropi_ready = bool(config.settings.zentropi_api_key and config.settings.zentropi_labeler_id and config.settings.zentropi_labeler_version_id)
             st.markdown(f"**Zentropi configured**: {zentropi_ready}")
-            st.markdown(f"**Groq configured**: {bool(settings.groq_api_key)}")
-            st.markdown(f"**Serper configured**: {bool(settings.serper_api_key)}")
+            st.markdown(f"**Groq configured**: {bool(config.settings.groq_api_key)}")
+            st.markdown(f"**Serper configured**: {bool(config.settings.serper_api_key)}")
 
         st.subheader("Decision Flow")
         build_flow_graph(

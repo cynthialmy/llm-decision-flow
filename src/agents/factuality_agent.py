@@ -5,7 +5,7 @@ from src.agents.base import BaseAgent
 from src.agents.prompt_registry import render_prompt
 from src.governance.system_config_store import get_prompt_overrides
 from src.models.schemas import FactualityAssessment, FactualityStatus, Claim, Evidence, AgentExecutionDetail
-from src.config import settings
+from src.config import get_settings
 
 
 class FactualityAgent(BaseAgent):
@@ -53,7 +53,7 @@ class FactualityAgent(BaseAgent):
                 confidence=self._aggregate_confidence(assessments),
                 route_reason="insufficient_evidence",
                 fallback_used=False,
-                policy_version=settings.policy_version,
+                policy_version=get_settings().policy_version,
                 execution_time_ms=0.0,
                 status="completed"
             )
@@ -91,7 +91,7 @@ class FactualityAgent(BaseAgent):
             system_prompt=system_prompt,
             output_model=FactualityResponse,
             temperature=0.3,
-            max_tokens=settings.frontier_max_tokens
+            max_tokens=get_settings().frontier_max_tokens
         )
 
         detail = AgentExecutionDetail(
@@ -99,13 +99,13 @@ class FactualityAgent(BaseAgent):
             agent_type="factuality",
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model_name=settings.azure_openai_deployment_name,
+            model_name=get_settings().azure_openai_deployment_name,
             model_provider="azure_openai",
             prompt_hash=self._prompt_hash(system_prompt, user_prompt),
             confidence=self._aggregate_confidence(response.assessments),
             route_reason="frontier_primary",
             fallback_used=False,
-            policy_version=settings.policy_version,
+            policy_version=get_settings().policy_version,
             execution_time_ms=elapsed_ms,
             status="completed"
         )

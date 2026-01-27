@@ -6,7 +6,7 @@ from src.agents.base import BaseAgent
 from src.agents.prompt_registry import render_prompt
 from src.governance.system_config_store import get_prompt_overrides, get_threshold_value
 from src.models.schemas import PolicyInterpretation, ViolationStatus, Claim, FactualityAssessment, RiskAssessment, AgentExecutionDetail
-from src.config import settings
+from src.config import get_settings
 from src.llm.zentropi_client import ZentropiClient
 
 
@@ -25,7 +25,7 @@ class PolicyAgent(BaseAgent):
         Returns:
             Policy text as string
         """
-        policy_path = settings.policy_file_path
+        policy_path = get_settings().policy_file_path
 
         if not os.path.exists(policy_path):
             # Return default policy if file doesn't exist
@@ -122,7 +122,7 @@ class PolicyAgent(BaseAgent):
                 slm_result = None
                 slm_error = f"Zentropi call failed: {exc}"
 
-        policy_threshold = get_threshold_value("policy_confidence_threshold", settings.policy_confidence_threshold)
+        policy_threshold = get_threshold_value("policy_confidence_threshold", get_settings().policy_confidence_threshold)
         if slm_result is None or slm_result.policy_confidence < policy_threshold:
             fallback_used = True
             route_reason = "fallback_frontier"
@@ -131,10 +131,10 @@ class PolicyAgent(BaseAgent):
                 system_prompt=system_prompt,
                 output_model=PolicyInterpretation,
                 temperature=0.3,
-                max_tokens=settings.frontier_max_tokens
+                max_tokens=get_settings().frontier_max_tokens
             )
             response.route_reason = route_reason
-            response.model_used = settings.azure_openai_deployment_name
+            response.model_used = get_settings().azure_openai_deployment_name
         else:
             response = slm_result
 
@@ -152,7 +152,7 @@ class PolicyAgent(BaseAgent):
             confidence=response.policy_confidence,
             route_reason=response.route_reason or route_reason,
             fallback_used=fallback_used,
-            policy_version=settings.policy_version,
+            policy_version=get_settings().policy_version,
             execution_time_ms=elapsed_ms,
             status="completed",
             error=slm_error

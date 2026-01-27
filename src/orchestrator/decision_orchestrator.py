@@ -5,7 +5,7 @@ from src.agents.risk_agent import RiskAgent
 from src.agents.evidence_agent import EvidenceAgent
 from src.agents.factuality_agent import FactualityAgent
 from src.agents.policy_agent import PolicyAgent
-from src.config import settings
+from src.config import get_settings
 from src.governance.system_config_store import get_threshold_value
 from src.rag.external_search import ExternalSearchClient
 from src.rag.vector_store import VectorStore
@@ -65,7 +65,7 @@ class DecisionOrchestrator:
         evidence: Optional[Evidence] = None
         factuality_assessments: list[FactualityAssessment] = []
         policy_interpretation: Optional[PolicyInterpretation] = None
-        risk_threshold = get_threshold_value("risk_confidence_threshold", settings.risk_confidence_threshold)
+        risk_threshold = get_threshold_value("risk_confidence_threshold", get_settings().risk_confidence_threshold)
         risk_confident = risk_assessment.confidence >= risk_threshold
 
         if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and risk_confident:
@@ -81,7 +81,7 @@ class DecisionOrchestrator:
                 similarity_score = self._max_claim_similarity(claims)
                 # Also check if we have no internal evidence at all
                 has_internal_evidence = len(evidence.supporting) > 0 or len(evidence.contradicting) > 0
-                novelty_threshold = get_threshold_value("novelty_similarity_threshold", settings.novelty_similarity_threshold)
+                novelty_threshold = get_threshold_value("novelty_similarity_threshold", get_settings().novelty_similarity_threshold)
                 if similarity_score < novelty_threshold or not has_internal_evidence:
                     # High novelty: similarity below threshold OR no internal evidence triggers external search
                     evidence = self._attach_external_context(evidence, claims)
@@ -265,18 +265,18 @@ class DecisionOrchestrator:
 
         # Low confidence gates (only for high-impact content)
         if risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH]:
-            claim_threshold = get_threshold_value("claim_confidence_threshold", settings.claim_confidence_threshold)
+            claim_threshold = get_threshold_value("claim_confidence_threshold", get_settings().claim_confidence_threshold)
             if claim_confidence < claim_threshold:
                 return True
 
-            risk_threshold = get_threshold_value("risk_confidence_threshold", settings.risk_confidence_threshold)
+            risk_threshold = get_threshold_value("risk_confidence_threshold", get_settings().risk_confidence_threshold)
             if risk_assessment.confidence < risk_threshold:
                 return True
 
         # High risk + low confidence
         if (risk_assessment.tier == RiskTier.HIGH and
             policy_interpretation and
-            policy_interpretation.policy_confidence < get_threshold_value("policy_confidence_threshold", settings.policy_confidence_threshold)):
+            policy_interpretation.policy_confidence < get_threshold_value("policy_confidence_threshold", get_settings().policy_confidence_threshold)):
             return True
 
         if (risk_assessment.tier in [RiskTier.MEDIUM, RiskTier.HIGH] and
@@ -307,7 +307,7 @@ class DecisionOrchestrator:
 
         max_similarity = 0.0
         for claim in claims:
-            score = vector_store.max_similarity(claim.text, index_version=settings.evidence_index_version)
+            score = vector_store.max_similarity(claim.text, index_version=get_settings().evidence_index_version)
             if score is not None:
                 max_similarity = max(max_similarity, score)
         # If no matches found for any claim, return 0.0 (similarity 0 = high novelty)
@@ -436,7 +436,7 @@ Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
                 evidence.evidence_gap = False
                 evidence.evidence_gap_reason = None
 
-        if settings.allow_external_enrichment and (supporting_items or contradicting_items or contextual_items):
+        if get_settings().allow_external_enrichment and (supporting_items or contradicting_items or contextual_items):
             vector_store = VectorStore()
             # Collect all external evidence for enrichment
             all_external = supporting_items + contradicting_items + contextual_items
@@ -447,7 +447,7 @@ Respond with ONLY one word: "supporting", "contradicting", or "contextual"."""
                     "domain": "external",
                     "quality": "external",
                     "timestamp": None,
-                    "index_version": settings.evidence_index_version,
+                    "index_version": get_settings().evidence_index_version,
                     "origin": "external_search",
                 }
                 for item in all_external

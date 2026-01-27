@@ -7,7 +7,7 @@ from src.agents.prompt_registry import render_prompt
 from src.governance.system_config_store import get_prompt_overrides
 from src.models.schemas import Claim, Domain, AgentExecutionDetail
 from src.llm.groq_client import GroqClient
-from src.config import settings
+from src.config import get_settings
 
 
 class ClaimAgent(BaseAgent):
@@ -42,7 +42,7 @@ class ClaimAgent(BaseAgent):
             prompt=user_prompt,
             system_prompt=system_prompt,
             temperature=0.2,
-            max_tokens=settings.claim_max_tokens
+            max_tokens=get_settings().claim_max_tokens
         )
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         response = self._parse_structured_output(response_data["content"], ClaimResponse)
@@ -58,7 +58,7 @@ class ClaimAgent(BaseAgent):
             confidence=self._aggregate_claim_confidence(response.claims),
             execution_time_ms=elapsed_ms,
             status="completed",
-            policy_version=settings.policy_version
+            policy_version=get_settings().policy_version
         )
 
         return response.claims, detail

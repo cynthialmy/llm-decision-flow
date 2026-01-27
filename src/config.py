@@ -93,8 +93,19 @@ class Settings(BaseSettings):
         extra = "ignore"  # Ignore extra environment variables
 
 
-# Global settings instance
+# Global settings instance (reloadable so Streamlit Cloud can pick up secrets after main() runs)
 settings = Settings()
+
+
+def reload_settings_from_env() -> None:
+    """Re-read settings from os.environ. Call after injecting Streamlit secrets into env."""
+    global settings
+    settings = Settings()
+
+
+def get_settings():
+    """Return current settings (use this so callers see reloaded config on Streamlit Cloud)."""
+    return settings
 
 
 def _normalize_endpoint(endpoint: str) -> str:

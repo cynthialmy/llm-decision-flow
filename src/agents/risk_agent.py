@@ -6,7 +6,7 @@ from src.agents.prompt_registry import render_prompt
 from src.governance.system_config_store import get_prompt_overrides, get_threshold_value
 from src.models.schemas import RiskAssessment, RiskTier, Claim, AgentExecutionDetail
 from src.llm.zentropi_client import ZentropiClient
-from src.config import settings
+from src.config import get_settings
 
 
 class RiskAgent(BaseAgent):
@@ -68,7 +68,7 @@ class RiskAgent(BaseAgent):
                 slm_result = None
                 slm_error = f"Zentropi call failed: {exc}"
 
-        risk_threshold = get_threshold_value("risk_confidence_threshold", settings.risk_confidence_threshold)
+        risk_threshold = get_threshold_value("risk_confidence_threshold", get_settings().risk_confidence_threshold)
         if slm_result is None or slm_result.confidence < risk_threshold:
             fallback_used = True
             route_reason = "fallback_frontier"
@@ -77,10 +77,10 @@ class RiskAgent(BaseAgent):
                 system_prompt=system_prompt,
                 output_model=RiskAssessment,
                 temperature=0.3,
-                max_tokens=settings.frontier_max_tokens
+                max_tokens=get_settings().frontier_max_tokens
             )
             response.route_reason = route_reason
-            response.model_used = settings.azure_openai_deployment_name
+            response.model_used = get_settings().azure_openai_deployment_name
             response.confidence = response.confidence if response.confidence else 0.0
         else:
             response = slm_result
@@ -98,7 +98,7 @@ class RiskAgent(BaseAgent):
             confidence=response.confidence,
             route_reason=response.route_reason or route_reason,
             fallback_used=fallback_used,
-            policy_version=settings.policy_version,
+            policy_version=get_settings().policy_version,
             execution_time_ms=elapsed_ms,
             status="completed",
             error=slm_error

@@ -7,7 +7,7 @@ import logging
 import hashlib
 from openai import AzureOpenAI, NotFoundError as OpenAINotFoundError
 from pydantic import BaseModel, ValidationError
-from src.config import get_azure_openai_client, settings, get_foundry_project_client, get_foundry_agent_name
+from src.config import get_azure_openai_client, get_settings, get_foundry_project_client, get_foundry_agent_name
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class BaseAgent(ABC):
             try:
                 # Method 1: Try inference.get_azure_openai_client() (newer SDK versions)
                 if hasattr(self.foundry_project_client, 'inference') and hasattr(self.foundry_project_client.inference, 'get_azure_openai_client'):
-                    api_version = settings.azure_openai_api_version or "2024-02-15-preview"
+                    api_version = get_settings().azure_openai_api_version or "2024-02-15-preview"
                     self.client = self.foundry_project_client.inference.get_azure_openai_client(api_version=api_version)
                     logger.debug("Using inference.get_azure_openai_client()")
                 # Method 2: Fallback to get_openai_client() (older SDK)
@@ -60,7 +60,7 @@ class BaseAgent(ABC):
             self.deployment_name = None  # Not needed for Foundry agents
         else:
             self.client: AzureOpenAI = get_azure_openai_client()
-            self.deployment_name: str = settings.azure_openai_deployment_name
+            self.deployment_name: str = get_settings().azure_openai_deployment_name
 
     def _call_llm(
         self,
@@ -107,7 +107,7 @@ class BaseAgent(ABC):
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
-                timeout=settings.frontier_timeout_s
+                timeout=get_settings().frontier_timeout_s
             )
             return response.choices[0].message.content or ""
         except OpenAINotFoundError as e:

@@ -5,7 +5,7 @@ from src.agents.base import BaseAgent
 from src.models.schemas import Evidence, Claim, AgentExecutionDetail
 from src.rag.evidence_retriever import EvidenceRetriever
 from src.rag.vector_store import VectorStore
-from src.config import settings
+from src.config import get_settings
 
 
 class EvidenceAgent(BaseAgent):
@@ -51,7 +51,7 @@ class EvidenceAgent(BaseAgent):
                 confidence=0.0,
                 route_reason="no_claims",
                 fallback_used=False,
-                policy_version=settings.policy_version,
+                policy_version=get_settings().policy_version,
                 execution_time_ms=elapsed_ms,
                 status="skipped"
             )
@@ -72,7 +72,7 @@ class EvidenceAgent(BaseAgent):
             confidence=evidence.evidence_confidence,
             route_reason="rag_retrieval",
             fallback_used=False,
-            policy_version=settings.policy_version,
+            policy_version=get_settings().policy_version,
             execution_time_ms=elapsed_ms,
             status="completed"
         )
