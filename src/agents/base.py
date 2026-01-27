@@ -19,15 +19,31 @@ class BaseAgent(ABC):
 
     def __init__(self):
         """Initialize agent with Azure OpenAI client."""
-        # Check if we should use Foundry agent first
-        try:
-            self.foundry_project_client = get_foundry_project_client()
-        except Exception as e:
-            logger.debug(f"Could not get Foundry project client: {e}")
+        settings = get_settings()
+        # On Streamlit Cloud there is no az login. Skip Foundry only when the endpoint is the
+        # openai.azure.com base URL + API key (that's the Cloud setup). When it's services.ai.azure.com
+        # (local Foundry), keep trying Foundry so local with az login still works.
+        ep = (settings.azure_openai_endpoint or "").strip()
+        use_api_key_mode = bool(
+            settings.azure_openai_api_key
+            and ep
+            and ".openai.azure.com" in ep
+        )
+        if use_api_key_mode:
             self.foundry_project_client = None
-
-        self.foundry_agent_name = get_foundry_agent_name()
-        self.use_foundry_agent = self.foundry_project_client is not None and self.foundry_agent_name is not None
+            self.foundry_agent_name = None
+            self.use_foundry_agent = False
+            logger.debug("Using Azure OpenAI API-key mode (AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT set)")
+        else:
+            try:
+                self.foundry_project_client = get_foundry_project_client()
+            except Exception as e:
+                logger.debug(f"Could not get Foundry project client: {e}")
+                self.foundry_project_client = None
+            self.foundry_agent_name = get_foundry_agent_name()
+            self.use_foundry_agent = (
+                self.foundry_project_client is not None and self.foundry_agent_name is not None
+            )
 
         if self.use_foundry_agent:
             logger.info(f"Using Foundry agent: {self.foundry_agent_name}")

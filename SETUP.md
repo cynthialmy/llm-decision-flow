@@ -420,6 +420,8 @@ Make sure to set these in your cloud platform's environment variables:
 
 **Why it works locally but not on Cloud:** Locally the app reads from your **`.env`** file. On Streamlit Cloud, **`.env` is not deployed** (it’s in `.gitignore`), so the app never sees it. Cloud config comes only from **Settings → Secrets**. If your secrets are “the same” as in `.env`, you must paste them into the app’s **Settings → Secrets** as TOML. The app copies those into the environment at startup.
 
+**No `az login` on Cloud:** Streamlit Cloud has no Azure Identity (`az login`). When both **AZURE_OPENAI_API_KEY** and **AZURE_OPENAI_ENDPOINT** are set in Secrets, the app uses API-key mode and skips Foundry entirely, so it works without `az login`. You can leave Foundry-related secrets (e.g. `AZURE_EXISTING_AIPROJECT_ENDPOINT`, `AZURE_EXISTING_AGENT_ID`) unset on Cloud, or leave them set — the app will still use API-key mode when both API key and endpoint are present.
+
 When deploying to **Streamlit Community Cloud**, add your secrets in the app’s **Settings → Secrets** (or paste TOML in “Advanced settings” during deploy). The app injects these into the environment before loading config.
 
 **Required secrets (when using Azure OpenAI with API key):**
