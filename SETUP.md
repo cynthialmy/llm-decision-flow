@@ -69,6 +69,8 @@ This installs all required packages including:
 
 **Note:** The Foundry SDK packages are optional. The application works without them using API keys instead. Cloud platforms may not install pre-release packages by default, so use `requirements-cloud.txt` for cloud deployments.
 
+**Python 3.13 Compatibility:** If you're using Python 3.13, make sure you're using pydantic 2.8.0 or newer (already included in requirements files).
+
 ### 4. Create Local Data Folders
 
 The app expects local directories that are not tracked in git:
@@ -494,6 +496,12 @@ Make sure to set these in your cloud platform's environment variables:
 **"Import errors"**:
 - Ensure you're in the project root and virtual environment is activated
 - Check Python version: `python --version` (should be 3.11+)
+- For Python 3.13, ensure pydantic>=2.8.0 is installed (already in requirements files)
+
+**"Failed building wheel for pydantic-core" or "ForwardRef._evaluate() missing 1 required keyword-only argument"**:
+- This indicates Python 3.13 compatibility issue with older pydantic versions
+- Solution: Upgrade to pydantic>=2.8.0 (already updated in requirements files)
+- If using Python 3.13, make sure you're using the latest requirements files
 
 **"Port already in use"**:
 - Change port in `run_server.py` or use: `uvicorn src.api.main:app --port 8001`
