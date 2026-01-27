@@ -6,7 +6,7 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic>=2.8.0  # Python 3.13 compatibility - 2.8.0+ required for Python 3.13
 pydantic-settings>=2.1.0  # Compatible with pydantic 2.8.0+ and Python 3.13
-sqlalchemy==2.0.23
+sqlalchemy>=2.0.30  # Python 3.13 compatibility - fixes Generic typing AssertionError with Python 3.13
 chromadb==0.4.18
 numpy<2.0.0  # ChromaDB 0.4.18 compatibility - NumPy 2.0 removed np.float_
 openai>=1.0.0,<2.0.0  # Foundry SDK compatibility - version 1.x works better

@@ -503,6 +503,11 @@ Make sure to set these in your cloud platform's environment variables:
 - Solution: Upgrade to pydantic>=2.8.0 (already updated in requirements files)
 - If using Python 3.13, make sure you're using the latest requirements files
 
+**"AssertionError" when importing SQLAlchemy or "Class directly inherits TypingOnly but has additional attributes"**:
+- This indicates Python 3.13 compatibility issue with SQLAlchemy 2.0.23 or earlier
+- Solution: Upgrade to sqlalchemy>=2.0.30 (already updated in requirements files)
+- SQLAlchemy 2.0.30+ fixes Generic typing issues with Python 3.13
+
 **"Port already in use"**:
 - Change port in `run_server.py` or use: `uvicorn src.api.main:app --port 8001`
 
