@@ -100,11 +100,30 @@ def _show_streamlit_cloud_azure_help() -> None:
             "(it's in `.gitignore`), so the app only sees **Settings → Secrets**. Paste the same keys/values from your "
             ".env into the app's **Settings → Secrets** as TOML."
         )
-        st.markdown("**404 usually means:** wrong deployment name, wrong endpoint URL, or Secrets not set on Cloud.")
+        st.markdown("**404 usually means:** deployment name doesn't match Azure, wrong endpoint, or Secrets not applied.")
+        st.markdown(
+            "**Deployment name must be exact:** In Azure Portal → your resource (**support-8844-resource**) → **Deployments** (or **Model deployments**), copy the **exact** name. It might be `gpt-4o`, `gpt-4o-01`, or something else—use what you see there. Same for embeddings."
+        )
         st.markdown(
             "**Endpoint on Cloud:** Use the **base** URL only: `https://YOUR-RESOURCE.openai.azure.com/` — **not** "
-            "`.../openai/v1/`. The SDK adds the path. If you paste `.../openai/v1/`, the app strips it automatically."
+            "`.../openai/v1/`. The SDK adds the path."
         )
+        # Show what the app is actually using (so they can match Azure Portal)
+        ep = (config.settings.azure_openai_endpoint or config.settings.azure_existing_aiproject_endpoint or "")
+        dep = (config.settings.azure_openai_deployment_name or "")
+        ver = (config.settings.azure_openai_api_version or "")
+        emb_ep = (config.settings.azure_openai_embedding_endpoint or "")
+        emb_dep = (config.settings.azure_openai_embedding_deployment or dep or "")
+        if ep or dep or emb_ep:
+            st.markdown("**Values this app is using (check against Azure Portal):**")
+            st.code(
+                f"Chat endpoint: {ep or '(none)'}\n"
+                f"Chat deployment: {dep or '(none)'}\n"
+                f"API version: {ver or '(none)'}\n"
+                f"Embedding endpoint: {emb_ep or '(same as chat)'}\n"
+                f"Embedding deployment: {emb_dep or '(none)'}",
+                language="text",
+            )
         st.markdown(
             "**In Streamlit Cloud:** open your app → ⋮ **Settings** → **Secrets** → paste the same keys as in your .env (as TOML):"
         )
@@ -117,7 +136,10 @@ def _show_streamlit_cloud_azure_help() -> None:
             'AZURE_OPENAI_API_VERSION = "2024-11-20"',
             language="toml",
         )
-        st.caption("Use your exact base endpoint (`...openai.azure.com/` for chat), deployment name, and API version from Azure Portal.")
+        st.caption(
+            "Use your exact base endpoint, deployment names, and API version from Azure Portal. "
+            "If 404 persists, try `AZURE_OPENAI_API_VERSION = \"2024-02-15-preview\"` in Secrets."
+        )
 
 
 def load_policy_text() -> str:

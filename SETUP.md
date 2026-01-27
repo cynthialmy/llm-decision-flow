@@ -495,9 +495,10 @@ Nested keys are mapped to `AZURE_OPENAI_*` env vars (e.g. `azure.openai_api_key`
 - Embeddings always require `AZURE_OPENAI_API_KEY`
 
 **"Deployment not found" or `openai.NotFoundError` on Streamlit Cloud**:
-- The app will show a clear message: check **AZURE_OPENAI_DEPLOYMENT_NAME** and **AZURE_OPENAI_ENDPOINT** in **Settings → Secrets**.
+- The in-app help (under "How to fix: Streamlit Cloud + Azure OpenAI") shows **Values this app is using**. Compare those to Azure Portal.
 - **Endpoint**: When using API key, use the **base** URL (e.g. `https://YOUR-RESOURCE.openai.azure.com/`). Do not use a Foundry project URL (`.../api/projects/...`) unless you use Foundry agents.
-- **Deployment name**: Must exactly match the deployment name in Azure Portal (e.g. `gpt-4o`, `gpt-4`). Copy it from Azure Portal → your resource → Deployments.
+- **Deployment name**: Must **exactly** match the deployment name in Azure. Steps: Azure Portal → your Cognitive Services resource (e.g. **support-8844-resource**) → **Deployments** or **Model deployments** → copy the **exact** name (e.g. `gpt-4o`, `gpt-4o-01`, `gpt4o`—use what you see). Set `AZURE_OPENAI_DEPLOYMENT_NAME` and `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` to those names in Secrets.
+- **API version**: If 404 persists with `2024-11-20`, try `AZURE_OPENAI_API_VERSION = "2024-02-15-preview"` in Secrets.
 - See [Streamlit Community Cloud](#streamlit-community-cloud) above for the exact TOML to paste in Secrets.
 
 ### SDK & Dependencies
