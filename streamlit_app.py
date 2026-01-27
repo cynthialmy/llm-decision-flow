@@ -59,15 +59,38 @@ from src.models.database import SessionLocal, DecisionRecord, ReviewRecord
 from src.rag.vector_store import VectorStore
 
 
+def _azure_openai_404_hints() -> List[str]:
+    """Return hints when Azure config likely causes 404. Empty list = nothing obvious."""
+    hints: List[str] = []
+    ep = (settings.azure_openai_endpoint or settings.azure_existing_aiproject_endpoint or "").strip()
+    dep = (settings.azure_openai_deployment_name or "").strip()
+    if not ep and not dep:
+        return hints
+    if "/api/projects/" in ep and settings.azure_openai_api_key:
+        hints.append(
+            "Endpoint is a **Foundry project URL**. For API-key auth use the **base** URL: "
+            "`https://YOUR-RESOURCE.openai.azure.com/` (no path)."
+        )
+    if dep and " " in dep:
+        hints.append("Deployment name must not contain spaces; use the exact name from Azure Portal.")
+    if not dep and settings.azure_openai_api_key:
+        hints.append("AZURE_OPENAI_DEPLOYMENT_NAME is missing. Set it to your deployment name (e.g. gpt-4o).")
+    if ep and not ep.endswith("/") and ".openai.azure.com" in ep:
+        hints.append("Endpoint should end with a slash: `https://YOUR-RESOURCE.openai.azure.com/`")
+    return hints
+
+
 def _show_streamlit_cloud_azure_help() -> None:
     """Show Streamlit Cloud + Azure OpenAI setup instructions in an expander."""
     with st.expander("How to fix: Streamlit Cloud + Azure OpenAI", expanded=True):
+        st.markdown("**404 usually means:**")
         st.markdown(
-            "1. **Endpoint** must be the **base** URL: `https://YOUR-RESOURCE.openai.azure.com/` "
-            "(not a Foundry project URL).\n"
-            "2. **Deployment name** must match Azure Portal → your resource → **Deployments** (e.g. `gpt-4o`).\n"
-            "3. Add these in your app **Settings → Secrets** (paste as TOML):"
+            "- **Wrong endpoint**: Use the **base** URL only: `https://YOUR-RESOURCE.openai.azure.com/` "
+            "— not a Foundry URL (`.../api/projects/...`) and no `/openai/deployments/...` path.\n"
+            "- **Wrong deployment name**: Copy it exactly from Azure Portal → your resource → **Deployments** "
+            "(e.g. `gpt-4o` or `gpt-4`)."
         )
+        st.markdown("**In Streamlit Cloud:** add these in your app **Settings → Secrets** (paste as TOML):")
         st.code(
             'AZURE_OPENAI_API_KEY = "your-api-key"\n'
             'AZURE_OPENAI_ENDPOINT = "https://YOUR-RESOURCE.openai.azure.com/"\n'
@@ -691,6 +714,13 @@ def main() -> None:
 
         if "analysis" not in st.session_state:
             st.session_state.analysis = None
+
+        hints = _azure_openai_404_hints()
+        if hints:
+            st.warning("**Azure OpenAI config may cause 404.** Fix these in Settings → Secrets, then redeploy:")
+            for h in hints:
+                st.markdown(f"- {h}")
+            _show_streamlit_cloud_azure_help()
 
         if run_analysis:
             stage_order = [
