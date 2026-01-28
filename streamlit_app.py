@@ -73,11 +73,7 @@ def _azure_openai_404_hints() -> List[str]:
     dep = (config.settings.azure_openai_deployment_name or "").strip()
     if not ep and not dep:
         return hints
-    if "/openai/v1" in ep and ".openai.azure.com" in ep:
-        hints.append(
-            "Endpoint contains **/openai/v1/** — use the **base** URL only: "
-            "`https://YOUR-RESOURCE.openai.azure.com/`. The SDK adds the path."
-        )
+    # /openai/v1/ is now supported (OpenAI-compatible endpoint style), so don't warn about it
     if "/api/projects/" in ep and config.settings.azure_openai_api_key:
         hints.append(
             "Endpoint is a **Foundry project URL**. For API-key auth use the **base** URL: "
